@@ -1,0 +1,9 @@
+# github.com/openshift/library-go v0.0.0-20190927184318-c355e2019bb3
+github.com/openshift/library-go/alpha-build-machinery
+github.com/openshift/library-go/alpha-build-machinery/make
+github.com/openshift/library-go/alpha-build-machinery/make/lib
+github.com/openshift/library-go/alpha-build-machinery/make/targets
+github.com/openshift/library-go/alpha-build-machinery/make/targets/golang
+github.com/openshift/library-go/alpha-build-machinery/make/targets/openshift
+github.com/openshift/library-go/alpha-build-machinery/make/targets/openshift/operator
+github.com/openshift/library-go/alpha-build-machinery/scripts
