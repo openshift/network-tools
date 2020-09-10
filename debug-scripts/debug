@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# generate /debug-network/version file
+. version
+echo "openshift/debug-network" > /debug-network/version
+version >> /debug-networking/version
+
