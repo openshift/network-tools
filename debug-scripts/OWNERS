@@ -1,4 +1,20 @@
 reviewers:
+  - abhat
+  - alexanderConstantinescu
+  - aojea
+  - danielmellado
+  - danwinship
+  - dcbw
+  - JacobTanenbaum
+  - juanluisvaladas
   - rcarrillocruz
+  - squeed
+  - tssurya
 approvers:
+  - abhat
+  - juanluisvaladas
+  - danielmellado
+  - danwinship
+  - dcbw
+  - knobunc
   - rcarrillocruz
