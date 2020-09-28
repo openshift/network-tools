@@ -3,6 +3,6 @@ WORKDIR /go/src/github.com/openshift/debug-network
 COPY . .
 ENV GO_PACKAGE github.com/openshift/debug-network
 
-FROM registry.svc.ci.openshift.org/openshift/origin-v4.0:cli
+FROM centos:8
 COPY --from=builder /go/src/github.com/openshift/debug-network/debug-scripts/* /usr/bin/
-
+RUN yum -y install jq tcpdump traceroute net-tools nmap-ncat pciutils strace numactl; yum clean all
