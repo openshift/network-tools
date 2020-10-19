@@ -108,6 +108,7 @@ log_nodesystem () {
 	mkdir -p $lognode
 
 	dmesg                                                  > $lognode/dmesg
+	try_eval "cat /proc/cmdline"                           > $lognode/cmdline
 	try_eval "cat /etc/udev/rules.d/10-nm-unmanaged.rules" > $lognode/udev
 }
 
