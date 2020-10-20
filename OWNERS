@@ -10,6 +10,10 @@ reviewers:
   - rcarrillocruz
   - squeed
   - tssurya
+  - dougbtv
+  - s1061123
+  - zshi-redhat
+  - pliurh
 approvers:
   - abhat
   - juanluisvaladas
@@ -18,3 +22,7 @@ approvers:
   - dcbw
   - knobunc
   - rcarrillocruz
+  - dougbtv
+  - s1061123
+  - zshi-redhat
+  - pliurh
