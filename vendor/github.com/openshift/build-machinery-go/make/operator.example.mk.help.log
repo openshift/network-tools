@@ -6,12 +6,12 @@ clean-binaries
 help
 image-ocp-openshift-apiserver-operator
 images
+telepresence
 test
 test-unit
 update
 update-bindata
 update-codegen
-update-deps
 update-deps-overrides
 update-generated
 update-gofmt
