@@ -26,3 +26,4 @@ approvers:
   - s1061123
   - zshi-redhat
   - pliurh
+component: "Networking"
