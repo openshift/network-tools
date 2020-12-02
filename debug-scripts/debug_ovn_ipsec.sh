@@ -44,12 +44,12 @@ EOF
 }
 
 
-do_ovn_ipsec_encryption_check(){
-
-    IPSEC_PODS = ($(oc -n openshift-ovn-kubernetes get pods -l app=ovn-ipsec -o=jsonpath='{.items[*].metadata.name}'))
-    WORKER_NODES = "$(oc get nodes --selector='!node-role.kubernetes.io/master' -o jsonpath='{range .items[*]}{@.metadata.name} {.status.nodeInfo.operatingSystem==linux}')"
-    DEBUG_NETWORK_NAMESPACE = "openshift-debug-network-"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 5 | head -n 1)
-    PCAP_FILENAME = "ipsec-test-"$(date +"%Y-%m-%d")".pcap"
+do_ovn_ipsec_encryption_check () {
+    echo "INFO: Ensuring ovn-ipsec is enabled"
+    IPSEC_PODS=($(oc -n openshift-ovn-kubernetes get pods -l app=ovn-ipsec -o=jsonpath='{.items[*].metadata.name}'))
+    WORKER_NODES=($(oc get nodes --selector='!node-role.kubernetes.io/master' -o jsonpath='{range .items[*]}{@.metadata.name} {.status.nodeInfo.operatingSystem==linux}'))
+    DEBUG_NETWORK_NAMESPACE="openshift-debug-network-"$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 5 | head -n 1)
+    PCAP_FILENAME="ipsec-test-"$(date +"%Y-%m-%d")".pcap"
     
     # TODO check with oc get network.operator.openshift.io/cluster -o=jsonpath='{.items[*].spec.defaultNetwork.ovnKubernetesConfig.ipsecConfig}' 
     # once tests can be run with real cluster 
@@ -83,6 +83,7 @@ do_ovn_ipsec_encryption_check(){
             echo "Tunnel traffic is encrypted with ovn-ipsec!"
         else 
             echo "Tunner traffic is not encrypted, check pcap: ${PCAP_FILENAME} for further details"
+        fi
     else
         echo "tcpdump error ${PCAP_FILENAME} wasn't written" 
     fi
