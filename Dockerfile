@@ -4,8 +4,8 @@ COPY . .
 ENV GO_PACKAGE github.com/openshift/debug-network
 
 FROM centos:8
-COPY --from=builder /go/src/github.com/openshift/debug-network/debug-scripts/* /usr/bin/
-RUN yum -y --setopt=tsflags=nodocs install git go nginxjq tcpdump traceroute wireshark net-tools nmap-ncat pciutils strace numactl && \
+COPY --from=builder /go/src/github.com/openshift/debug-network/debug-scripts/ /usr/bin/debug-network-scripts/
+RUN yum -y --setopt=tsflags=nodocs install git go nginx jq tcpdump traceroute wireshark net-tools nmap-ncat pciutils strace numactl make && \
     yum clean all && \
     curl https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/4.6.0/openshift-client-linux-4.6.0.tar.gz > /tmp/oc.tar.gz && \
     tar xzvf /tmp/oc.tar.gz -C /usr/bin && \
