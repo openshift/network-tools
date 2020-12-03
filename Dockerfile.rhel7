@@ -5,4 +5,4 @@ ENV GO_PACKAGE github.com/openshift/debug-network
 
 FROM registry.svc.ci.openshift.org/ocp/4.7:base
 COPY --from=builder /go/src/github.com/openshift/debug-network/debug-scripts/* /usr/bin/
-RUN yum -y install jq tcpdump traceroute net-tools nmap-ncat pciutils strace numactl; yum clean all
+RUN yum -y install git go jq tcpdump traceroute net-tools nmap-ncat pciutils strace numactl make; yum clean all
