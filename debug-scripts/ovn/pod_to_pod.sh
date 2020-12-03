@@ -83,9 +83,9 @@ do_pod_to_pod_connectivity_check () {
         # incorportate the logic to use ovnkube-trace to output the ovn/ovs trace 
         echo "Something is wrong, running the ovnkube-trace and detrace to help figure out the packet route..."
         # [TODO]: Once ovnkube-trace is packed in oc, we can start using it directly and cleanup the nonsense from the below lines.
-        git clone --single-branch --branch ovnkube-trace https://github.com/mccv1r0/ovn-kubernetes.git && \
+        git clone https://github.com/ovn-org/ovn-kubernetes.git && \
         pushd ovn-kubernetes/go-controller && make && \
-        _output/go/bin/ovnkube-trace --tcp --dst-port 80  --src $client_debug_pod --dst $server_debug_pod -dst-namespace $DEBUG_NETWORK_NAMESPACE -src-namespace $DEBUG_NETWORK_NAMESPACE --loglevel=5 && \
+        _output/go/bin/ovnkube-trace --tcp --dst-port 80  --src $client_debug_pod --dst $server_debug_pod -dst-namespace $DEBUG_NETWORK_NAMESPACE -src-namespace $DEBUG_NETWORK_NAMESPACE --loglevel=5
         popd && rm -rf ovn-kubernetes
     fi
 
@@ -102,9 +102,9 @@ By default this script spins up two pods (a client and a server) in the openshif
 supply the script with source and destination node names on which the pods should be scheduled.
 "
    echo
-   echo "Usage: oc rsh -n <DEBUG-NETWORK-NAMESPACE> <debug-network-podname> ./pod_to_pod.sh <src-node-name> <dst-node-name>"
+   echo "Usage: oc rsh -n <DEBUG-NETWORK-NAMESPACE> <debug-network-podname> ./usr/bin/debug-network-scripts/ovn/pod_to_pod.sh  <src-node-name> <dst-node-name>"
    echo "or"
-   echo "podman run -v /tmp/kubeconfig:/tmp/kubeconfig <IMAGE_ID> ./usr/bin/pod_to_pod.sh"
+   echo "podman run -v /tmp/kubeconfig:/tmp/kubeconfig <IMAGE_ID> ./usr/bin/debug-network-scripts/ovn/pod_to_pod.sh"
    echo
 }
 
