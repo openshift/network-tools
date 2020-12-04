@@ -114,46 +114,9 @@ sdn_overlay_ip(){
   -e 's@0/([012])?[0-9]$@1@'
 }
 
-test_sdn_nodes(){
-  for node in $(oc get hostsubnet -o name); do
-    local success=overlay
-    if ! ping $(sdn_overlay_ip "${node}") -w 2 -W 1 2>&1 >/dev/null ; then
-      sucess=underlay
-      if ! ping $(sdn_underlay_ip "${node}") -w 2 -W 1 2>&1 >/dev/null ; then
-	success=no
-      fi
-    fi
-    if [[ "${success}" == "overlay" ]]; then
-      echo SUCCESS: Can ping ${node} on the overlay
-    elif [[ "${success}" == "underlay" ]]; then
-      echo FAIL: Cannot ping ${node} on the overlay but can reach it on the underlay.
-    else
-      echo FAIL: Cannot ping ${node} on the overlay or the underlay.
-    fi
-
-  done
-}
-
-test_ovn_nodes(){
-  #TODO
-  :
-}
-
-
-test_nodes(){
-  if is_sdn ; then
-    test_sdn_nodes
-  elif [[ $(is_ovn) ]]; then
-    test_ovn_nodes
-  else
-    echo Unable to test node connectivity. Only openshift-sdn and ovn-kubernetes are supported
-  fi;
-}
-
 POD="${1}"
 SVC="${2}"
 CONTAINER_PID="$(get_container_pid)"
 NSE="nsenter -n -t ${CONTAINER_PID}"
 test_svc
 test_ep
-test_nodes
