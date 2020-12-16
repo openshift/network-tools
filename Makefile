@@ -14,4 +14,4 @@ IMAGE_REGISTRY := registry.svc.ci.openshift.org
 # $2 - image ref
 # $3 - Dockerfile path
 # $4 - context directory for image build
-$(call build-image,ocp-debug-network,$(IMAGE_REGISTRY)/ocp/4.7:ocp-debug-network, ./Dockerfile,.)
+$(call build-image,ocp-network-tools,$(IMAGE_REGISTRY)/ocp/4.7:ocp-network-tools, ./Dockerfile,.)
