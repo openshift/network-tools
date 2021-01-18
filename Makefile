@@ -15,3 +15,10 @@ IMAGE_REGISTRY := registry.svc.ci.openshift.org
 # $3 - Dockerfile path
 # $4 - context directory for image build
 $(call build-image,ocp-network-tools,$(IMAGE_REGISTRY)/ocp/4.7:ocp-network-tools, ./Dockerfile,.)
+
+# The "rhel" Dockerfile requires fiddling with RHEL subscriptions.
+# For testing purposes it's easier to just build a fedora-based image
+build-image-network-tools-test:
+	podman build --no-cache -f ./Dockerfile.fedora -t network-tools-test .
+
+.PHONY: build-image-network-tools-test
