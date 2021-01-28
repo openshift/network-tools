@@ -1,0 +1,130 @@
+#!/bin/bash
+
+create_pod_on_node () {
+    local POD_NAME="${1}"
+    local NODE_NAME="${2}"
+
+    if [ -z $NODE_NAME ] || [ -z $(get_node_by_name $NODE_NAME) ]; then
+        # no node or non-existing node is specified, so we pick any one node to schedule the pod.
+        worker_nodes=($(get_worker_nodes_all))
+        NODE_NAME=${worker_nodes[0]}
+    fi
+
+    oc label node "$NODE_NAME" "$POD_NAME"=network-tools-debug-role
+    echo "INFO: Scheduling "$POD_NAME" on "$NODE_NAME""
+
+    oc run "$POD_NAME" --image=quay.io/itssurya/dev-images:07a7498a-c9d5-48c1-8b83-d6d8e2e0ed22 \
+        --overrides='{ "spec": { "nodeSelector": {"'"$POD_NAME"'": "network-tools-debug-role"} } }' \
+        -- /sbin/init
+
+    # wait till pod is running
+    oc wait --for=condition=Ready pod/"$POD_NAME" --timeout=3m
+    # remove label
+    oc label nodes "$NODE_NAME" "$POD_NAME"-
+}
+
+create_svc () {
+    local SVC_NAME="${1}"
+    local NODE_NAME="${2}"
+
+    # create the backing pod
+    create_pod_on_node "$SVC_NAME" "$NODE_NAME"
+    echo "INFO: Creating a ClusterIP service: "$SVC_NAME""
+    # start webserver and expose the port
+    oc rsh "$SVC_NAME" systemctl start nginx
+    # TODO: Allow users to specify which svc type they want to test
+    oc expose pod/"$SVC_NAME" --port=80
+    # wait till svc endpoint is created
+    while [[ $(oc get ep "$SVC_NAME" -o 'jsonpath={.subsets[0].addresses[0].ip}') == "" ]]; do echo "waiting for svc" && sleep 1; done
+}
+
+get_random_name () {
+    cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 5 | head -n 1
+}
+
+get_pod_ip() {
+    local namespace="${1}"
+    local name="${2}"
+    oc get pod -n "$namespace" "$name" -o jsonpath={.status.podIP}
+}
+
+get_pod_node() {
+    local namespace="${1}"
+    local name="${2}"
+    oc get pod -n "$namespace" "$name" -o jsonpath={.spec.nodeName}
+}
+
+get_pod_by_name () {
+    local namespace="${1}"
+    local name="${2}"
+    oc get pod -n "$namespace" "$name" --ignore-not-found -o jsonpath={.metadata.name}
+}
+
+get_node_by_name () {
+    local name="${1}"
+    oc get node "$name" --ignore-not-found -o jsonpath={.metadata.name}
+}
+
+get_worker_nodes_all () {
+    oc get node --selector='!node-role.kubernetes.io/master' -o jsonpath={.items[*].metadata.name}
+}
+
+get_worker_nodes_linux () {
+    oc get nodes --selector='!node-role.kubernetes.io/master' -o jsonpath='{range .items[*]}{@.metadata.name} {.status.nodeInfo.operatingSystem==linux}'
+}
+
+get_svc_by_name () {
+    local namespace="${1}"
+    local name="${2}"
+    oc get svc -n "$namespace" "$name" --ignore-not-found -o jsonpath={.metadata.name}
+}
+
+get_svc_ip () {
+    local namespace="${1}"
+    local name="${2}"
+    oc get svc -n "$namespace" "$name" -o 'jsonpath={.spec.clusterIP}'
+}
+
+get_current_namespace () {
+    oc config view --minify --output 'jsonpath={..namespace}'
+}
+
+run_command_inside_pod_network_namespace() {
+    local namespace="${1}"
+    local pod="${2}"
+    local command="${3}"
+
+    echo
+    echo "INFO: Running $command in the netns of pod $pod"
+
+    ans=$(oc debug \
+        node/$(get_pod_node "$namespace" "$pod") \
+        -- chroot /host bash -c \
+        "nsenter -n -t \$(runc state \$(crictl pods --namespace "$namespace" --name "$pod" -q) | jq .pid) $command")
+    echo "INFO: $ans"
+
+    # since we cannot trust the return code from the debug container, we have to add logic to consider
+    # success and failure for each command.
+    if [[ "$command" == *"nc -z -v"* ]]; then
+        if [[ "$ans" == *"Ncat: Connected to"* ]]; then return 0; else return 1; fi
+    elif [[ "$command" == *"ping"* ]]; then
+        if [[ "$ans" == *", 0% packet loss"* ]]; then return 0; else return 1; fi
+    fi
+}
+
+# check_existing_resources checks if the user provided input refers to
+# existing resource names in the cluster and if not creates new ones.
+check_existing_resources () {
+    local type=${1}
+    # if namespace provided is empty, then set it to default.
+    if [ -z $ns ]; then ns=default; fi
+    if [ -z $resource_name ] || [ -z $(get_${type}_by_name $ns $resource_name) ]; then
+        # no existing resource is specified, so we need to create a new resource for the test.
+        resource_name="network-tools-debug"-${type}-$(get_random_name)
+        if [[ "$type" == "pod" ]]; then func=create_pod_on_node; else func=create_svc; fi
+        $func $resource_name $node
+        POD_NAMESPACE=$(oc get $type $resource_name -o jsonpath={.metadata.namespace})
+    else
+        POD_NAMESPACE=$ns
+    fi
+}
