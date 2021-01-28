@@ -1,4 +1,4 @@
-module github.com/openshift/debug-networking
+module github.com/openshift/network-tools
 
 go 1.14
 
