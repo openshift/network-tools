@@ -1,0 +1,96 @@
+#!/bin/bash
+
+source common
+
+# validate_input checks if the user provided input refers to existing pod/svc/node
+# and if not creates new ones.
+validate_input () {
+
+    # check if the provided source and destination names are that of existing pod and service (format: <namespace/name>).
+    IFS='/' read -ra src_name <<< $src_name; IFS='/' read -ra dst_name <<< $dst_name
+
+    ns="${src_name[0]}"; resource_name="${src_name[1]}"; node="$src_name"
+    check_existing_resources "pod"
+    debug_pod="$resource_name"
+    SRC_POD_NAMESPACE="$POD_NAMESPACE"
+
+    ns="${dst_name[0]}"; resource_name="${dst_name[1]}"; node="$dst_name"
+    check_existing_resources "svc"
+    debug_svc="$resource_name"
+    DST_SVC_NAMESPACE="$POD_NAMESPACE"
+
+}
+
+do_pod_to_svc_connectivity_check () {
+
+    validate_input
+
+    debug_svc_ip=$(get_svc_ip "$DST_SVC_NAMESPACE" "$debug_svc")
+
+    # rsh into the client pod and curl the svc
+    echo "INFO: IP of service: $debug_svc_ip"
+    # TODO: Make this script smarter to determine the svc port number automatically in case an existing service is provided as input.
+    curl_output=$(oc rsh -n $SRC_POD_NAMESPACE $debug_pod curl -sL -w "%{http_code}" "http://$debug_svc_ip:80" -o /dev/null --connect-timeout 3 --max-time 5)
+    if [ $curl_output == "200" ]; then
+        echo "SUCCESS: curl http://$debug_svc_ip:80  ->  success"
+    else
+        echo "FAILURE: curl http://$debug_svc_ip:80  ->  failed"
+        echo "INFO: Is curl installed on $debug_pod? Trying to run netcat from the network namespace of $debug_pod..."
+        run_command_inside_pod_network_namespace "$SRC_POD_NAMESPACE" "$debug_pod" "nc -z -v $debug_svc_ip 80"
+        local result=$?
+        if [ "$result" == "0" ]; then echo "SUCCESS: curl http://$debug_svc_ip:80  ->  success"
+        else
+            # incorporting the logic to use ovnkube-trace to output the ovn/ovs trace
+            echo "INFO: Something is wrong, running the ovnkube-trace and detrace to help figure out the packet route..."
+            ovnkube-trace --tcp --src "$debug_pod" --service "$debug_svc" -dst-namespace "$DST_SVC_NAMESPACE" -src-namespace "$SRC_POD_NAMESPACE" --loglevel=5
+        fi
+    fi
+
+}
+
+help()
+{
+    # Display Help
+    echo
+    echo "This script checks pod2svc connectivity on an OVN cluster.
+By default this script spins up a pod (a client) and a service (a backing-server pod and a clusterIP:port svc) in the openshift-network-tools-* namespace.
+You can optionally supply the script with a pair of source and destination names. These can either be the source and destination node names on
+which the debug pods should be scheduled or they can be existing pod (format: <namespace/pod-name>) and service names (format: <namespace/svc-name>)
+to run the connectivity test.
+
+NOTE: If existing pod/svc are passed as arguments, make sure curl utility is installed on the pod and svc has .spec.clusterIP:80 exposed for testing.
+
+Method: We run a curl from the <src-pod> to <dst-svc-ip>. If curl is not installed on the pod or if it fails, we run a netcat command from the
+network namespace of the <src-pod> to <dst-svc-ip> to check connectivity.
+
+If the connectivity test fails, it will run an ovnkube trace between the pod and service.
+"
+    echo
+    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> ovn_pod_to_svc <src-node-name> <dst-node-name>"
+    echo "or"
+    echo "oc adm network-tools -- ovn_pod_to_svc <src-pod-namespace/src-pod-name> <dst-svc-namespace/dst-svc-name>"
+    echo "or"
+    echo "oc adm network-tools -- ovn_pod_to_svc "" <dst-svc-namespace/dst-svc-name>"
+    echo "or"
+    echo "oc adm network-tools -- ovn_pod_to_svc <src-pod-namespace/src-pod-name>"
+    echo "or"
+    echo "podman run <IMAGE_ID> ovn_pod_to_svc"
+    echo
+}
+
+main () {
+    do_pod_to_svc_connectivity_check
+}
+
+while getopts ":h" option; do
+    case $option in
+        h) # display Help
+            help
+            exit;;
+    esac
+done
+
+src_name="${1}"
+dst_name="${2}"
+
+main

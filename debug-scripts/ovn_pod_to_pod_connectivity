@@ -1,0 +1,96 @@
+#!/bin/bash
+
+source common
+
+validate_input () {
+
+    # check if the provided source and destination names are that of existing pods (format: <namespace/pod-name>).
+    IFS='/' read -ra src_name <<< $src_name; IFS='/' read -ra dst_name <<< $dst_name
+
+    ns="${src_name[0]}"; resource_name="${src_name[1]}"; node="$src_name"
+    check_existing_resources "pod"
+    client_debug_pod="$resource_name"
+    SRC_POD_NAMESPACE="$POD_NAMESPACE"
+
+    ns="${dst_name[0]}"; resource_name="${dst_name[1]}"; node="$dst_name"
+    check_existing_resources "pod"
+    server_debug_pod="$resource_name"
+    DST_POD_NAMESPACE="$POD_NAMESPACE"
+
+}
+
+do_pod_to_pod_connectivity_check () {
+
+    validate_input
+
+    client_debug_pod_ip=$(get_pod_ip "$SRC_POD_NAMESPACE" "$client_debug_pod")
+    server_debug_pod_ip=$(get_pod_ip "$DST_POD_NAMESPACE" "$server_debug_pod")
+
+    # rsh into the client pod and ping the server
+    echo "INFO: IP of client pod $client_debug_pod: $client_debug_pod_ip and IP of server pod $server_debug_pod: $server_debug_pod_ip"
+    if oc rsh -n $SRC_POD_NAMESPACE $client_debug_pod ping $server_debug_pod_ip -c 1 -W 2 &> /dev/null; then
+        echo "SUCCESS: ping $server_debug_pod_ip  ->  success"
+    else
+        echo "FAILURE: ping $server_debug_pod_ip  ->  failed"
+        echo "INFO: Is ping utility installed on $client_debug_pod? Trying to run ping from the network namespace of $client_debug_pod..."
+        run_command_inside_pod_network_namespace "$SRC_POD_NAMESPACE" "$client_debug_pod" "ping $server_debug_pod_ip -c 1 -W 2"
+        local result=$?
+        if [ "$result" == "0" ]; then echo "SUCCESS: ping $server_debug_pod_ip  ->  success"
+        else
+            echo "INFO: Is traceroute utility installed on $client_debug_pod? If not ignore the error message."
+            echo "INFO: Running traceroute from $client_debug_pod to $server_debug_pod:"
+            oc rsh -n $SRC_POD_NAMESPACE $client_debug_pod traceroute $server_debug_pod_ip -m 10
+            # incorportating the logic to use ovnkube-trace to output the ovn/ovs trace
+            echo "INFO: Something is wrong, running the ovnkube-trace and detrace to help figure out the packet route..."
+            ovnkube-trace --tcp --src $client_debug_pod --dst $server_debug_pod -dst-namespace $DST_POD_NAMESPACE -src-namespace $SRC_POD_NAMESPACE --loglevel=5
+        fi
+    fi
+
+}
+
+help()
+{
+    # Display Help
+    echo
+    echo "This script checks pod2pod connectivity on an OVN cluster.
+By default this script spins up two pods (a client and a server) in the openshift-network-tools-* namespace. You can optionally
+supply the script with a pair of source and destination names. These can either be the source and destination node names on
+which the debug pods should be scheduled or they can be existing pod names (format: <namespace/pod-name>) to run the connectivity
+test.
+
+NOTE: If existing pods are passed as arguments, make sure ping utility is installed on the <src-pod> pods.
+
+Method: We run a ping from the <src-pod> to <dst-pod>. If ping is not installed on the <src-pod> or if it fails, we run a ping command from the
+network namespace of the <src-pod> to <dst-pod> to check connectivity.
+
+If the connectivity test fails, it will run an ovnkube trace between the source and destination pods.
+"
+    echo
+    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> ovn_pod_to_pod <src-node-name> <dst-node-name>"
+    echo "or"
+    echo "oc adm network-tools -- ovn_pod_to_pod <src-pod-namespace/src-pod-name> <dst-pod-namespace/dst-pod-name>"
+    echo "or"
+    echo "oc adm network-tools -- ovn_pod_to_pod "" <dst-pod-namespace/dst-pod-name>"
+    echo "or"
+    echo "oc adm network-tools -- ovn_pod_to_pod <src-pod-namespace/src-pod-name>"
+    echo "or"
+    echo "podman run <IMAGE_ID> ovn_pod_to_pod"
+    echo
+}
+
+main () {
+    do_pod_to_pod_connectivity_check
+}
+
+while getopts ":h" option; do
+    case $option in
+        h) # display Help
+            help
+            exit;;
+    esac
+done
+
+src_name="${1}"
+dst_name="${2}"
+
+main
