@@ -1,0 +1,135 @@
+#!/bin/bash
+
+source common
+
+ep_ports() {
+    # Only lists ports if they are TCP.
+    oc get ep -n "$DST_SVC_NAMESPACE" "${debug_svc}" \
+        -o template \
+        --template \
+        '{{with $s := index .subsets 0}}{{ range $p := $s.ports }}{{if eq $p.protocol "TCP"}}{{ $p.port }}{{ "\n" }}{{end}}{{end}}{{end}}'
+}
+
+ep_ips() {
+    oc get ep -n "$DST_SVC_NAMESPACE" "${debug_svc}" \
+        -o template \
+        --template \
+        '{{with $s := index .subsets 0}}{{ range $s.addresses }}{{.ip}}{{"\n"}}{{end}}{{end}}'
+}
+
+test_ep() {
+    local success=true
+    for ip in $(ep_ips); do
+        for port in $(ep_ports); do
+            run_command_inside_pod_network_namespace "$SRC_POD_NAMESPACE" "$debug_pod" "nc -z -v "${ip}" "${port}""
+            local result=$?
+            if [ "$result" != "0" ]
+            then
+                echo "FAILURE: Unable to open TCP socket to "${ip}":"${port}"."
+                success=false
+            fi
+        done
+    done
+    if [[ "$success" = true ]]; then
+        echo "SUCCESS: Tested all TCP endpoints correctly"
+    fi
+}
+
+ep_len() {
+    oc get ep -n "$DST_SVC_NAMESPACE" "${debug_svc}" \
+        -o template \
+        --template \
+        '{{with $s := index .subsets 0}}{{ len $s.addresses }}{{"\n"}}{{end}}'
+}
+
+svc_ports() {
+    # Only lists ports if they are TCP.
+    oc get svc -n "$DST_SVC_NAMESPACE" "${debug_svc}" \
+        -o template \
+        --template \
+        '{{ range .spec.ports }}{{if eq .protocol "TCP"}}{{ .port }}{{ "\n" }}{{end}}{{end}}'
+}
+
+test_svc() {
+    # Don't depend on DNS so that we can run test it outside the pod's namespace.
+    local ip=$(get_svc_ip "$DST_SVC_NAMESPACE" "${debug_svc}")
+    for port in $(svc_ports); do
+        run_command_inside_pod_network_namespace "$SRC_POD_NAMESPACE" "$debug_pod" "nc -z -v ${ip} ${port}"
+        local result=$?
+        if [ "$result" != "0" ]
+        then
+            echo "FAILURE: Unable to open TCP socket to service "${debug_svc}" on "${ip}":"${port}"."
+            return
+        fi
+    done
+    echo "SUCCESS: Succesfully reached service "${debug_svc}" on port "${port}"."
+}
+
+# validate_input checks if the user provided input refers to existing pod/svc/node
+# and if not creates new ones.
+validate_input () {
+
+    # check if the provided source and destination names are that of existing pod and service (format: <namespace/name>).
+    IFS='/' read -ra src_name <<< $src_name; IFS='/' read -ra dst_name <<< $dst_name
+
+    ns="${src_name[0]}"; resource_name="${src_name[1]}"; node="$src_name"
+    check_existing_resources "pod"
+    debug_pod="$resource_name"
+    SRC_POD_NAMESPACE="$POD_NAMESPACE"
+
+    ns="${dst_name[0]}"; resource_name="${dst_name[1]}"; node="$dst_name"
+    check_existing_resources "svc"
+    debug_svc="$resource_name"
+    DST_SVC_NAMESPACE="$POD_NAMESPACE"
+
+}
+
+do_pod_to_svc_connectivity_check () {
+    validate_input
+    test_svc
+    test_ep
+}
+
+help()
+{
+    # Display Help
+    echo
+    echo "This script checks pod2svc connectivity on a SDN cluster.
+By default this script spins up a pod (a client) and a service (a backing-server pod and a clusterIP:port svc) in the openshift-network-tools-* namespace.
+You can optionally supply the script with a pair of source and destination names. These can either be the source and destination node names on
+which the debug pods should be scheduled or they can be existing pod (format: <namespace/pod-name>) and service names (format: <namespace/svc-name>)
+to run the connectivity test.
+
+Method: We run a netcat command from the network namespace of the src-pod to each of the endpoints and dst-svc-ip to check connectivity.
+
+If the connectivity test fails the script will report failure through logs.
+"
+    echo
+    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> sdn_pod_to_svc <src-node-name> <dst-node-name>"
+    echo "or"
+    echo "oc adm network-tools -- sdn_pod_to_svc <src-pod-namespace/src-pod-name> <dst-svc-namespace/dst-svc-name>"
+    echo "or"
+    echo "oc adm network-tools -- sdn_pod_to_svc "" <dst-svc-namespace/dst-svc-name>"
+    echo "or"
+    echo "oc adm network-tools -- sdn_pod_to_svc <src-pod-namespace/src-pod-name>"
+    echo "or"
+    echo "podman run <IMAGE_ID> sdn_pod_to_svc"
+    echo
+}
+
+main () {
+    do_pod_to_svc_connectivity_check
+}
+
+while getopts ":h" option; do
+    case $option in
+        h) # display Help
+            help
+            exit;;
+    esac
+done
+
+src_name="${1}"
+dst_name="${2}"
+
+main

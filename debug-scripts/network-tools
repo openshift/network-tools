@@ -1,0 +1,31 @@
+#!/bin/bash
+
+source common
+
+get_network_plugin () {
+    oc get networks.config.openshift.io cluster -o 'jsonpath={.spec.networkType}'
+}
+
+network_plugin=$(get_network_plugin)
+echo "INFO: Cluster is using $network_plugin network plugin"
+
+# Create basic resources that can be reused for any test.
+# NOTE: Test specific resources should be created within the script.
+client="network-tools-debug-pod"-$(get_random_name); server="network-tools-debug-svc"-$(get_random_name)
+create_pod_on_node $client
+create_svc $server
+global_namespace=$(oc get pod $client -o jsonpath={.metadata.namespace})
+
+if [[ "$network_plugin" == "OVNKubernetes" ]] ; then
+    # run scripts
+    ovn_pod_to_pod_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
+    ovn_pod_to_svc_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
+    # ovn_ipsec_connectivity
+elif [[ "$network_plugin" == "OpenShiftSDN" ]] ; then
+    # run scripts
+    sdn_pod_to_pod_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
+    sdn_pod_to_svc_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
+    # sdn_node_connectivity
+else
+    echo "Unable to debug cluster networking. Only OpenShiftSDN and OVNKubernetes plugins are supported"
+fi

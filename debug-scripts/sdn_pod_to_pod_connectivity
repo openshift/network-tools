@@ -1,0 +1,81 @@
+#!/bin/bash
+
+source common
+
+validate_input () {
+
+    # check if the provided source and destination names are that of existing pods (format: <namespace/pod-name>).
+    IFS='/' read -ra src_name <<< $src_name; IFS='/' read -ra dst_name <<< $dst_name
+
+    ns="${src_name[0]}"; resource_name="${src_name[1]}"; node="$src_name"
+    check_existing_resources "pod"
+    client_debug_pod="$resource_name"
+    SRC_POD_NAMESPACE="$POD_NAMESPACE"
+
+    ns="${dst_name[0]}"; resource_name="${dst_name[1]}"; node="$dst_name"
+    check_existing_resources "pod"
+    server_debug_pod="$resource_name"
+    DST_POD_NAMESPACE="$POD_NAMESPACE"
+
+}
+
+do_pod_to_pod_connectivity_check () {
+    validate_input
+
+    client_debug_pod_ip=$(get_pod_ip "$SRC_POD_NAMESPACE" "$client_debug_pod")
+    server_debug_pod_ip=$(get_pod_ip "$DST_POD_NAMESPACE" "$server_debug_pod")
+    echo "INFO: IP of client pod "$client_debug_pod": "$client_debug_pod_ip" and IP of server pod "$server_debug_pod": "$server_debug_pod_ip""
+
+    run_command_inside_pod_network_namespace "$SRC_POD_NAMESPACE" "$client_debug_pod" "ping $server_debug_pod_ip -c 1 -W 2"
+    local result=$?
+    if [ "$result" == "0" ]
+    then
+        echo "SUCCESS: Pod "${client_debug_pod}" established an ICMP connection successfully against "${server_debug_pod}""
+    else
+        echo "FAILURE: Pod "${client_debug_pod}" unable to establish an ICMP connection against "${server_debug_pod}""
+    fi
+}
+
+help()
+{
+    # Display Help
+    echo
+    echo "This script checks pod2pod connectivity on a SDN cluster.
+By default this script spins up two pods (a client and a server) in the openshift-network-tools-* namespace. You can optionally
+supply the script with a pair of source and destination names. These can either be the source and destination node names on
+which the debug pods should be scheduled or they can be existing pod names (format: <namespace/pod-name>) to run the connectivity
+test.
+
+Method: We run a ping from the network namespace of the src-pod to the dst-pod to check connectivity.
+
+If the connectivity test fails the script will report failure through logs.
+"
+    echo
+    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> sdn_pod_to_pod <src-node-name> <dst-node-name>"
+    echo "or"
+    echo "oc adm network-tools -- sdn_pod_to_pod <src-pod-namespace/src-pod-name> <dst-pod-namespace/dst-pod-name>"
+    echo "or"
+    echo "oc adm network-tools -- sdn_pod_to_pod "" <dst-pod-namespace/dst-pod-name>"
+    echo "or"
+    echo "oc adm network-tools -- sdn_pod_to_pod <src-pod-namespace/src-pod-name>"
+    echo "or"
+    echo "podman run <IMAGE_ID> sdn_pod_to_pod"
+    echo
+}
+
+main () {
+    do_pod_to_pod_connectivity_check
+}
+
+while getopts ":h" option; do
+    case $option in
+        h) # display Help
+            help
+            exit;;
+    esac
+done
+
+src_name="${1}"
+dst_name="${2}"
+
+main
