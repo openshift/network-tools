@@ -13,3 +13,8 @@ a series of tests to diagnose the functionality in the cluster works ok. In case
 would dig in the script and provide further checks to point at potential root causes to resolve the issue.
 Therefore, the pattern for these scripts is to find issues and *why* those issues exist. Gathering logs is not
 in the scope of these scripts and are better suited on the openshift/must-gather image.
+
+## Documentation
+
+* Please see [contributor docs] (https://github.com/openshift/network-tools/blob/master/docs/contributor.md) for more information regarding the scope of this repository and how to contribute.
+* Users can go to [user docs] (https://github.com/openshift/network-tools/blob/master/docs/user.md) for information on how to leverage the tools and scripts shipped by this image.
