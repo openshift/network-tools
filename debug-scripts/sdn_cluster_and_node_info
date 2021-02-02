@@ -1,0 +1,191 @@
+#!/bin/bash
+source common
+
+run_command_inside_host_network_pod () {
+    local host_network_pod_name="${1}"
+    local command="${2}"
+    echo "INFO: oc exec $host_network_pod_name -- chroot /host bash -c "$command""
+    oc exec $host_network_pod_name -- chroot /host bash -c "$command"
+}
+
+log_system () {
+    logpath="$1"
+
+    echo "INFO: Gathering nmcli --nocheck -f all dev show from node $node"
+    run_command_inside_host_network_pod $host_pod_name "nmcli --nocheck -f all dev show"                    &> $logpath/nmcli-dev
+
+    echo "INFO: Gathering nmcli -- nocheck -f all con show from node $node"
+    run_command_inside_host_network_pod $host_pod_name "nmcli --nocheck -f all con show"                   &> $logpath/nmcli-con
+
+    echo "INFO: Gathering ip addr show from node $node"
+    run_command_inside_host_network_pod $host_pod_name "ip addr show"                                       &> $logpath/addresses
+
+    echo "INFO: Gathering ip route show from node $node"
+    run_command_inside_host_network_pod $host_pod_name "ip route show"                                      &> $logpath/routes
+
+    echo "INFO: Gathering ip -s neighbor show from node $node"
+    run_command_inside_host_network_pod $host_pod_name "ip -s neighbor show"                                &> $logpath/arp
+
+    echo "INFO: Gathering iptables-save from node $node"
+    run_command_inside_host_network_pod $host_pod_name "iptables-save"                                      &> $logpath/iptables
+
+    echo "INFO: Gathering cat /etc/hosts from node $node"
+    run_command_inside_host_network_pod $host_pod_name "cat /etc/hosts"                                     &> $logpath/hosts
+
+    echo "INFO: Gathering cat /etc/resolv.conf from node $node"
+    run_command_inside_host_network_pod $host_pod_name "cat /etc/resolv.conf"                               &> $logpath/resolv.conf
+
+    echo "INFO: Gathering lsmod from node $node"
+    run_command_inside_host_network_pod $host_pod_name "lsmod"                                              &> $logpath/modules
+
+    echo "INFO: Gathering sysctl -a from node $node"
+    run_command_inside_host_network_pod "$host_pod_name" "sysctl -a"                                          &> $logpath/sysctl
+
+    run_command_inside_host_network_pod "$host_pod_name" "oc version"                                         &> $logpath/version
+    echo                                                                                                    &>> $logpath/version
+    run_command_inside_host_network_pod "$host_pod_name" "crictl version"                                     &>> $logpath/version
+}
+
+node_info () {
+    echo "INFO: Gathering node wise info"
+    if [ -z "$node_name" ] || [ -z $(get_node_by_name "$node_name") ]; then
+	    echo "INFO: User did not provide node name in input. Selecting all nodes."
+        nodes=($(get_nodes_all))
+    else
+        nodes=("$node_name")
+    fi
+
+    local ns="openshift-network-tools"-$(get_random_name)
+    oc create namespace "$ns"
+    oc project "$ns"
+
+    for node in "${nodes[@]}"; do
+        lognode=$logdir/nodes/$node
+        mkdir -p $lognode
+
+        host_pod_name=$(get_host_network_pod_name "$node" "$ns")
+        echo "INFO: Creating host-network-pod "$host_pod_name" on node "$node" to gather information"
+        create_host_network_pod_on_node "$host_pod_name" "$node" "$ns"
+
+        # Log the generic system stuff
+        log_system "$lognode"
+
+        openvswitch_cont_id=$(oc exec $host_pod_name -- chroot /host bash -c "crictl ps --name openvswitch -q")
+        echo "INFO: ovs container id on node $node is $openvswitch_cont_id"
+
+        echo "INFO: Gathering ovs-dpctl dump-dps from ovs pod on node $node"
+        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id ovs-dpctl dump-dps" &> $lognode/ovs-dpctl-dump-dps
+
+        echo "INFO: Gathering ovs-dpctl show -s from ovs pod on node $node"
+        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id ovs-dpctl show -s" &> $lognode/ovs-dpctl-show-s
+
+        echo "INFO: Gathering ovs-dpctl dump-flows from ovs pod on node $node"
+        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id ovs-dpctl dump-flows" &> $lognode/ovs-dpctl-dump-flows
+
+        echo "INFO: Gathering ovs-dpctl dump-conntrack from ovs pod on node $node"
+        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id ovs-dpctl dump-conntrack" &> $lognode/ovs-dpctl-dump-conntrack
+
+        echo "INFO: Gathering conntrack -L from ovs pod on node $node"
+        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id conntrack -L" &> $lognode/conntrack-l
+
+        echo "INFO: Gathering ovs-dpctl ct-stats-show from ovs pod on node $node"
+        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id ovs-dpctl ct-stats-show" &> $lognode/ovs-dpctl-ct-stats-show
+
+        echo "INFO: Gathering tc qdisc show from node $node"
+        run_command_inside_host_network_pod $host_pod_name "tc qdisc show" &> $lognode/tc-qdisc
+
+        echo "INFO: Gathering tc class show from node $node"
+        run_command_inside_host_network_pod  $host_pod_name "tc class show" &> $lognode/tc-class
+
+        echo "INFO: Gathering tc filter show from node $node"
+        run_command_inside_host_network_pod $host_pod_name "tc filter show " &> $lognode/tc-filter
+
+        echo "INFO: Gathering crictl ps -a from node $node"
+        run_command_inside_host_network_pod $host_pod_name "crictl ps -a" &> $lognode/crictl-ps-a
+
+        echo "INFO: Gathering crictl ps -v from node $node"
+        run_command_inside_host_network_pod $host_pod_name "crictl ps -v" &> $lognode/crictl-ps-v
+
+        oc delete pod "$host_pod_name"
+    done
+    oc delete namespace "$ns"
+}
+
+# echoes the command provided as $@ and then runs it
+echo_and_eval () {
+    echo "> $*"
+    echo ""
+    eval "$@"
+}
+
+cluster_info () {
+    logcluster=$logdir/cluster
+    mkdir -p $logcluster
+
+    echo "INFO: Gathering cluster wide info like nodes, pods, svc, eps, routes, hostsubnets, netns"
+    # Get the cluster wide information
+    echo_and_eval  oc get nodes                      -o yaml               &> $logcluster/nodes
+    echo_and_eval  oc get pods      --all-namespaces -o yaml               &> $logcluster/pods
+    echo_and_eval  oc get services  --all-namespaces -o yaml               &> $logcluster/services
+    echo_and_eval  oc get endpoints --all-namespaces -o yaml               &> $logcluster/endpoints
+    echo_and_eval  oc get routes    --all-namespaces -o yaml               &> $logcluster/routes
+    echo_and_eval  oc get clusternetwork             -o yaml               &> $logcluster/clusternetwork
+    echo_and_eval  oc get hostsubnets                -o yaml               &> $logcluster/hostsubnets
+    echo_and_eval  oc get netnamespaces              -o yaml               &> $logcluster/netnamespaces
+
+    # Outputs a list of nodes in the form "nodename IP"
+    oc get nodes --template '{{range .items}}{{$name := .metadata.name}}{{range .status.addresses}}{{if eq .type "InternalIP"}}{{$name}} {{.address}}{{"\n"}}{{end}}{{end}}{{end}}' > $logdir/meta/nodeinfo
+
+    echo "" > $logdir/meta/nodeinfo
+
+    oc adm top nodes > $logdir/meta/nodeinfo
+
+    # Outputs a list of pods in the form "nodename nodeIP podname namespace podIP container-id"
+    oc get pods --all-namespaces --template '{{range .items}}{{if .status.containerStatuses}}{{if (index .status.containerStatuses 0).ready}}{{if not .spec.hostNetwork}}{{.spec.nodeName}}    {{.status.hostIP}}    {{.metadata.name}}    {{.metadata.namespace}}    {{.status.podIP}}    {{printf "%.21s" (index .status.containerStatuses 0).containerID}}{{"\n"}}{{end}}{{end}}{{end}}{{end}}' | sed -e 's|crio://||' > $logdir/meta/podinfo
+}
+
+help() {
+    # Display Help
+    echo
+    echo "This script queries and displays some important cluster information:
+- nodes, pods, services, endpoints, routers, clusternetwork, hostsubnets, netnamespace
+on a SDN cluster.
+
+It also by default spins up a host-network pod on each node in the cluster and grabs the following info:
+- interface information, ip a, ip ro, iptables-save, ovs dump-flows, conntrack-dump, ct-stats, crictl ps -v
+
+Note: If you want the information only from a single node, you can provide that node's name as an argument.
+"
+    echo
+    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> sdn_cluster_and_node_info <node-name>"
+    echo "or"
+    echo "oc adm network-tools -- sdn_cluster_and_node_info <node-name>"
+    echo "or"
+    echo "podman run <IMAGE_ID> sdn_cluster_and_node_info"
+    echo
+}
+
+main () {
+    logdir=$(mktemp --tmpdir -d openshift-sdn-debug-XXXXXXXXX)
+    mkdir $logdir/meta
+    mkdir $logdir/nodes
+    cluster_info
+    node_info "${node_name}" |& tee $logdir/log
+
+    dumpname=openshift-sdn-debug-$(date --iso-8601).tgz
+    (cd $logdir; tar -cf - --transform='s/^\./openshift-sdn-debug/' .) | gzip -c > $dumpname
+    echo ""
+    echo "Output is in $dumpname"
+}
+
+while getopts ":h" option; do
+    case $option in
+        h) # display Help
+            help
+            exit;;
+    esac
+done
+
+node_name="${1}"
+
+main

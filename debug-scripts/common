@@ -73,6 +73,14 @@ get_worker_nodes_linux () {
     oc get nodes --selector='!node-role.kubernetes.io/master' -o jsonpath='{range .items[*]}{@.metadata.name} {.status.nodeInfo.operatingSystem==linux}'
 }
 
+get_master_nodes_all () {
+    oc get node --selector='node-role.kubernetes.io/master' -o jsonpath={.items[*].metadata.name}
+}
+
+get_nodes_all () {
+    oc get node -o jsonpath={.items[*].metadata.name}
+}
+
 get_svc_by_name () {
     local namespace="${1}"
     local name="${2}"
@@ -127,4 +135,43 @@ check_existing_resources () {
     else
         POD_NAMESPACE=$ns
     fi
+}
+
+get_host_network_pod_name () {
+    local node_name="${1}"
+    local namespace="${2}"
+    oc debug --to-namespace="$namespace" node/"$node_name" -o jsonpath='{.metadata.name}'
+}
+
+create_host_network_pod_on_node () {
+    local POD_NAME="${1}"
+    local NODE_NAME="${2}"
+    # we always created a separate namespace to cleanup host network pod properly
+    # if not specified the namespace will be "default"
+    local NAMESPACE="${3}"
+    local TTL="${4}" # by default it is 10mins.
+
+
+    if [ -z $NODE_NAME ] || [ -z $(get_node_by_name $NODE_NAME) ]; then
+        # no node or non-existing node is specified, so we pick any one node to schedule the pod.
+        nodes=($(get_nodes_all))
+        NODE_NAME=${nodes[0]}
+    fi
+
+    # if namespace provided is empty, then set it to default.
+    if [ -z $NAMESPACE ]; then NAMESPACE=default; fi
+    # If time to live is empty, then set it to 10mins.
+    # We take this precaution since this pod has access to host's netns,
+    # so that if deletion fails, it stays in completed state.
+    if [ -z $TTL ]; then TTL=600s; fi
+
+    echo "INFO: Scheduling "$POD_NAME" on "$NODE_NAME""
+
+    oc debug --to-namespace="$NAMESPACE" node/"$NODE_NAME" --as-root=true \
+        --preserve-pod=true --image=quay.io/itssurya/dev-images:df97123e-a901-44ce-b28d-6e3757d3738f \
+        -- bash -c "sleep $TTL" > /dev/null 2>&1 &
+
+    # wait till pod is running
+    sleep 2
+    oc wait -n "$NAMESPACE" --for=condition=Ready pod/"$POD_NAME" --timeout=3m
 }

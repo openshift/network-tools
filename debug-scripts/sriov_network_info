@@ -126,24 +126,42 @@ do_operator_and_nodes () {
 
 }
 
-case "$0" in
-	/*)
-	self=$0
-	;;
-	*)
-	self=$(pwd)/$0
-	;;
-esac
+help() {
+    # Display Help
+    echo
+    echo "This script queries and displays some important sriov network information from the cluster:
+- TODO(zshi): Add information on what this script collects and arguments that it accepts if any.
+"
+    echo
+    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> sriov_network_info"
+    echo "or"
+    echo "oc adm network-tools -- sriov_network_info"
+    echo "or"
+    echo "podman run <IMAGE_ID> sriov_network_info"
+    echo
+}
 
-logdir=$(mktemp --tmpdir -d openshift-sriov-debug-XXXXXXXXX)
-echo $logdir
-mkdir $logdir/meta
-cp $self $logdir/meta/debug.sh
-mkdir $logdir/master
-mkdir $logdir/nodes
-do_operator_and_nodes |& tee $logdir/log
+main () {
+	logdir=$(mktemp --tmpdir -d openshift-sriov-debug-XXXXXXXXX)
+	echo $logdir
+	mkdir $logdir/meta
+	cp $self $logdir/meta/debug.sh
+	mkdir $logdir/master
+	mkdir $logdir/nodes
+	do_operator_and_nodes |& tee $logdir/log
 
-dumpname=openshift-sriov-debug-$(date --iso-8601).tgz
-(cd $logdir; tar -cf - --transform='s/^\./openshift-sriov-debug/' .) | gzip -c > $dumpname
-echo ""
-echo "Output is in $dumpname"
+	dumpname=openshift-sriov-debug-$(date --iso-8601).tgz
+	(cd $logdir; tar -cf - --transform='s/^\./openshift-sriov-debug/' .) | gzip -c > $dumpname
+	echo ""
+	echo "Output is in $dumpname"
+}
+
+while getopts ":h" option; do
+    case $option in
+        h) # display Help
+            help
+            exit;;
+    esac
+done
+
+main
