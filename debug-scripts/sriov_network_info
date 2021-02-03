@@ -1,7 +1,6 @@
 #!/bin/bash
 
 SRIOV_NAMESPACE=${SRIOV_NAMESPACE:-"openshift-sriov-network-operator"}
-SSH_OPTS='-o StrictHostKeyChecking=no -o PasswordAuthentication=no'
 
 # echoes the command provided as $@ and then runs it
 echo_and_eval () {
@@ -27,25 +26,6 @@ try_eval () {
 	return $status
 }
 
-run_self_via_ssh () {
-	args=$1
-	host=$2
-
-	if ! try_eval ssh $SSH_OPTS core@$host /bin/true; then
-		return 1
-	fi
-
-	if ! try_eval ssh $SSH_OPTS core@$host mkdir -m 0700 -p $logdir; then
-		return 1
-	fi
-
-	if ! try_eval scp -pr $SSH_OPTS $logdir/meta core@$host:$logdir; then
-		return 1
-	fi
-
-	ssh $SSH_OPTS core@$host $extra_env /bin/bash $logdir/meta/debug.sh $args
-}
-
 do_operator () {
 	while read node addr; do
 		stat=$(oc get sriovnetworknodestate $node -n $SRIOV_NAMESPACE --template '{{.status.syncStatus}}' 2>/dev/null)
@@ -63,6 +43,7 @@ do_operator () {
 	done < $logdir/meta/nodeinfo
 }
 
+# TODO: collect node info with debug pod
 do_node () {
 	while read node addr; do
 		if ip addr show | grep -q "inet $addr/"; then
@@ -141,12 +122,8 @@ do_operator_and_nodes () {
 	do_operator
 
 	printf "\n"
-	printf "Analyzing nodes\n"
+	printf "TODO: Analyzing nodes\n"
 
-	while read node addr; do
-		run_self_via_ssh --node $addr < /dev/null && \
-		try_eval scp $SSH_OPTS -pr core@$addr:$logdir/nodes $logdir
-	done < $logdir/meta/nodeinfo
 }
 
 case "$0" in
@@ -155,14 +132,6 @@ case "$0" in
 	;;
 	*)
 	self=$(pwd)/$0
-	;;
-esac
-
-case "$1" in
-	--node)
-	logdir=$(dirname $0 | sed -e 's|/meta$||')
-	do_node
-	exit 0
 	;;
 esac
 
