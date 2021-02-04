@@ -10,6 +10,7 @@ FROM registry.ci.openshift.org/ocp/4.7:tools
 COPY --from=builder /go/src/github.com/openshift/network-tools/debug-scripts/* /usr/bin/
 COPY --from=ovnkube-trace /usr/bin/ovnkube-trace /usr/bin/
 
+# Make sure to maintain alphabetical ordering when adding new packages.
 RUN INSTALL_PKGS="\
     nginx \
     numactl \

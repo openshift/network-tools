@@ -46,7 +46,8 @@ help()
 {
     # Display Help
     echo
-    echo "TODO"
+    echo "This script checks the node connectivity on a SDN cluster.
+"
 }
 
 main () {
