@@ -1,7 +1,7 @@
 network-tools
 =============
 
-`network-tools` is a tool for debugging OpenShift cluster network issues.
+`network-tools` is a collection of tools for debugging OpenShift cluster network issues.
 It will contain both debugging scripts (described in the next section) and useful tools that can be used
 by network engineers and openshift operators to debug and diagnose issues.
 
