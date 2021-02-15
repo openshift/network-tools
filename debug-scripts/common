@@ -188,13 +188,6 @@ create_host_network_pod_on_node () {
         NODE_NAME=${nodes[0]}
     fi
 
-    # if namespace provided is empty, then set it to default.
-    if [ -z $NAMESPACE ]; then NAMESPACE=default; fi
-    # If time to live is empty, then set it to 10mins.
-    # We take this precaution since this pod has access to host's netns,
-    # so that if deletion fails, it stays in completed state.
-    if [ -z $TTL ]; then TTL=600s; fi
-
     echo "INFO: Scheduling "$POD_NAME" on "$NODE_NAME""
 
     oc debug --to-namespace="$NAMESPACE" node/"$NODE_NAME" --as-root=true \
@@ -204,13 +197,4 @@ create_host_network_pod_on_node () {
     # wait till pod is running
     sleep 2
     oc wait -n "$NAMESPACE" --for=condition=Ready pod/"$POD_NAME" --timeout=3m
-}
-
-format_sdout () { 
-    RED='\033[0;31m'
-    GREEN='\033[0;32m'
-    BLUE='\033[0;34m'
-    NC='\033[0m' # No Color
-
-    
 }

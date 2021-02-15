@@ -108,30 +108,14 @@ help()
 {
     # Display Help
     echo
-    echo "This script checks pod2pod connectivity on an OVN cluster.
-By default this script spins up two pods (a client and a server) in the openshift-network-tools-* namespace. You can optionally
-supply the script with a pair of source and destination names. These can either be the source and destination node names on
-which the debug pods should be scheduled or they can be existing pod names (format: <namespace/pod-name>) to run the connectivity
-test.
+    echo "This script checks that node2node traffic is encrypted when the ipsec feature is enabled an Openshift OVN-kubernetes cluster.
+By default this script spins up two pods (a client and a server) on two different nodes in the openshift-network-tools-* namespace. It also 
+spins up a host networked debug pod which runs a packet sniffer on all traffic passing between the nodes.
 
-NOTE: If existing pods are passed as arguments, make sure ping utility is installed on the <src-pod> pods.
+Method: We run a ping from the <src-pod> to <dst-pod>. The debug pod running tcpdump captures the packet as it transverses the Geneve tunnel 
+across the nodes and ensures the pack is encrypted wth the ESP protocol.  It will also dump the .pcap capture for further analysis 
+to the debug pod reguardless of a passing or failing test. "
 
-Method: We run a ping from the <src-pod> to <dst-pod>. If ping is not installed on the <src-pod> or if it fails, we run a ping command from the
-network namespace of the <src-pod> to <dst-pod> to check connectivity.
-
-If the connectivity test fails, it will run an ovnkube trace between the source and destination pods.
-"
-    echo
-    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> ovn_pod_to_pod <src-node-name> <dst-node-name>"
-    echo "or"
-    echo "oc adm network-tools -- ovn_pod_to_pod <src-pod-namespace/src-pod-name> <dst-pod-namespace/dst-pod-name>"
-    echo "or"
-    echo "oc adm network-tools -- ovn_pod_to_pod "" <dst-pod-namespace/dst-pod-name>"
-    echo "or"
-    echo "oc adm network-tools -- ovn_pod_to_pod <src-pod-namespace/src-pod-name>"
-    echo "or"
-    echo "podman run <IMAGE_ID> ovn_pod_to_pod"
-    echo
 }
 
 
