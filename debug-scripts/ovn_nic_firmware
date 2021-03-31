@@ -1,0 +1,48 @@
+#!/bin/bash
+
+source common
+
+
+do_nic_firmware_check () {
+    local nodes=($(get_pod_by_label openshift-ovn-kubernetes app=ovnkube-node))
+    local first_node_fw=$(oc exec -n openshift-ovn-kubernetes -c ovnkube-node ${nodes[0]} -- bash -c 'ethtool -i $(ovs-vsctl list-ports br-ex|grep -v patch-br-ex) | grep firmware-version | cut -d ":" -f2 | sed "s/^ *//g"')
+    local first_node_worker=$(oc get -n openshift-ovn-kubernetes pod ${nodes[0]} -o jsonpath={.spec.nodeName})
+    for n in ${nodes[@]:1} ; do
+        n_fw=$(oc exec -n openshift-ovn-kubernetes -c ovnkube-node ${n} -- bash -c 'ethtool -i $(ovs-vsctl list-ports br-ex|grep -v patch-br-ex) | grep firmware-version | cut -d ":" -f2 | sed "s/^ *//g"')
+        n_worker=$(oc get -n openshift-ovn-kubernetes pod ${n} -o jsonpath={.spec.nodeName})
+        if [[ ${fw} == ${first_node_fw} ]]; then
+            echo "SUCCESS: "Node ${n_worker}" has firmware version "${fw}" just like node ${first_node_worker}"
+	else
+            echo "FAILURE: "Node ${n_worker}" has firmware version "${fw}" just unlike node ${first_node_worker}"
+	fi
+    done
+}
+
+help()
+{
+    # Display Help
+    echo
+    echo "This script checks the firmware of OVN cluster nodes match.
+
+If there is a NIC firmware mismatch, it will show the firmware version mismatch.
+"
+    echo
+    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> ovn_nic_firmware"
+    echo "or"
+    echo "podman run <IMAGE_ID> ovn_nic_firmware"
+    echo
+}
+
+main () {
+    do_nic_firmware_check
+}
+
+while getopts ":h" option; do
+    case $option in
+        h) # display Help
+            help
+            exit;;
+    esac
+done
+
+main
