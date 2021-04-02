@@ -54,6 +54,12 @@ get_pod_node() {
     oc get pod -n "$namespace" "$name" -o jsonpath={.spec.nodeName}
 }
 
+get_pod_by_label () {
+    local namespace="${1}"
+    local label="${2}"
+    oc get pod -n openshift-ovn-kubernetes -l app=ovnkube-node -o jsonpath={.items[*].metadata.name}
+}
+
 get_pod_by_name () {
     local namespace="${1}"
     local name="${2}"

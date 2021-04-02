@@ -21,6 +21,7 @@ if [[ "$network_plugin" == "OVNKubernetes" ]] ; then
     ovn_pod_to_pod_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
     ovn_pod_to_svc_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
     # ovn_ipsec_connectivity
+    # ovn_nic_firmware
 elif [[ "$network_plugin" == "OpenShiftSDN" ]] ; then
     # run scripts
     sdn_cluster_and_node_info
