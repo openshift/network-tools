@@ -1,0 +1,97 @@
+#!/bin/bash
+
+source common
+
+do_network_tools_daemonset () {
+    cat << EOF | oc apply -f -
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: network-tools
+  namespace: openshift-ovn-kubernetes
+  annotations:
+    kubernetes.io/description: |
+      This daemonset deploys network-tools pods that run
+      a list of containers for debugging network issues
+    release.openshift.io/version: "{{.ReleaseVersion}}"
+    networkoperator.openshift.io/non-critical: ""
+spec:
+  selector:
+      matchLabels:
+        app: network-tools
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
+  template:
+    metadata:
+      labels:
+        app: network-tools
+        kubernetes.io/os: "linux"
+    spec:
+      hostNetwork: true
+      serviceAccountName: ovn-kubernetes-node
+      containers:
+      - image: quay.io/openshift/origin-network-tools
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/bash", "-c", "/usr/sbin/tcpdump"]
+        name: tcpdump
+        resources:
+          requests:
+            cpu: 10m
+            memory: 15Mi
+        securityContext:
+          privileged: true
+      serviceAccount: default
+      terminationGracePeriodSeconds: 10
+      tolerations:
+      - operator: "Exists"
+      nodeSelector:
+        beta.kubernetes.io/os: "linux"
+EOF
+}
+
+delete_network_tools_daemonset()
+{
+    oc -n openshift-ovn-kubernetes delete ds network-tools
+}
+
+help()
+{
+    # Display Help
+    echo
+    echo "This script deploys a network-tools DaemonSet on an OVN cluster.
+The DaemonSet will run the following commands in containers to help debug networking issues:
+
+- tcpdump
+
+The containers are refreshed every 30 seconds.
+"
+    echo
+    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> ovn_network_tools_daemonset"
+    echo "or"
+    echo "podman run <IMAGE_ID> ovn_network_tools_daemonset"
+    echo "will create the network-tools daemonset"
+    echo
+    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> ovn_network_tools_daemonset -d"
+    echo "or"
+    echo "podman run <IMAGE_ID> ovn_network_tools_daemonset -d"
+    echo "will delete the network-tools daemonset"
+}
+
+main () {
+    do_network_tools_daemonset
+}
+
+while getopts ":hd" option; do
+    case $option in
+        h) # display Help
+            help
+            exit;;
+        d) # delete daemonset
+            delete_network_tools_daemonset
+            exit;;
+    esac
+done
+
+main
