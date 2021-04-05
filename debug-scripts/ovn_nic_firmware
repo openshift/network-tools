@@ -10,10 +10,10 @@ do_nic_firmware_check () {
     for n in ${nodes[@]:1} ; do
         n_fw=$(oc exec -n openshift-ovn-kubernetes -c ovnkube-node ${n} -- bash -c 'ethtool -i $(ovs-vsctl list-ports br-ex|grep -v patch-br-ex) | grep firmware-version | cut -d ":" -f2 | sed "s/^ *//g"')
         n_worker=$(oc get -n openshift-ovn-kubernetes pod ${n} -o jsonpath={.spec.nodeName})
-        if [[ ${fw} == ${first_node_fw} ]]; then
-            echo "SUCCESS: "Node ${n_worker}" has firmware version "${fw}" just like node ${first_node_worker}"
+        if [[ ${n_fw} == ${first_node_fw} ]]; then
+            echo "SUCCESS: "Node ${n_worker}" has firmware version "${n_fw}" just like node ${first_node_worker}"
 	else
-            echo "FAILURE: "Node ${n_worker}" has firmware version "${fw}" just unlike node ${first_node_worker}"
+            echo "FAILURE: "Node ${n_worker}" has firmware version "${n_fw}" unlike node ${first_node_worker}, which is ${first_node_fw}"
 	fi
     done
 }
