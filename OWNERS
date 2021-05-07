@@ -2,26 +2,25 @@ reviewers:
   - abhat
   - alexanderConstantinescu
   - aojea
-  - danielmellado
   - danwinship
   - dcbw
   - JacobTanenbaum
-  - rcarrillocruz
   - squeed
   - tssurya
   - dougbtv
   - s1061123
   - zshi-redhat
   - pliurh
+  - astoycos
 approvers:
   - abhat
-  - danielmellado
   - danwinship
   - dcbw
   - knobunc
-  - rcarrillocruz
   - dougbtv
   - s1061123
   - zshi-redhat
   - pliurh
+  - tssurya
+  - astoycos
 component: "Networking"
