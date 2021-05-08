@@ -100,7 +100,13 @@ get_svc_ip () {
 }
 
 get_current_namespace () {
-    oc config view --minify --output 'jsonpath={..namespace}'
+    local namespace=$(oc config view --minify --output 'jsonpath={..namespace}')
+    if [ -z "$namespace" ]; 
+    then   
+       echo "default"
+    else 
+       oc config view --minify --output 'jsonpath={..namespace}'
+    fi
 }
 
 run_command_inside_pod_network_namespace() {
@@ -145,7 +151,14 @@ check_existing_resources () {
 
 get_host_network_pod_name () {
     local node_name="${1}"
-    local namespace="${2}"
+    # Check if namespace is unset and set to default if so 
+    if [ -z ${2+x} ]; 
+    then 
+        local namespace="default"
+    else
+        local namespace="${2}"
+    fi
+    
     oc debug --to-namespace="$namespace" node/"$node_name" -o jsonpath='{.metadata.name}'
 }
 
@@ -154,22 +167,26 @@ create_host_network_pod_on_node () {
     local NODE_NAME="${2}"
     # we always created a separate namespace to cleanup host network pod properly
     # if not specified the namespace will be "default"
-    local NAMESPACE="${3}"
-    local TTL="${4}" # by default it is 10mins.
+    if [ -z ${3+x} ]; 
+    then
+        local NAMESPACE="default"
+    else
+        local NAMESPACE="${3}"
+    fi
 
+    if [ -z ${4+x} ]; 
+    then
+        # by default it is 10mins.
+        local  TTL="10m"
+    else
+        local TTL="${4}"
+    fi
 
     if [ -z $NODE_NAME ] || [ -z $(get_node_by_name $NODE_NAME) ]; then
         # no node or non-existing node is specified, so we pick any one node to schedule the pod.
         nodes=($(get_nodes_all))
         NODE_NAME=${nodes[0]}
     fi
-
-    # if namespace provided is empty, then set it to default.
-    if [ -z $NAMESPACE ]; then NAMESPACE=default; fi
-    # If time to live is empty, then set it to 10mins.
-    # We take this precaution since this pod has access to host's netns,
-    # so that if deletion fails, it stays in completed state.
-    if [ -z $TTL ]; then TTL=600s; fi
 
     echo "INFO: Scheduling "$POD_NAME" on "$NODE_NAME""
 

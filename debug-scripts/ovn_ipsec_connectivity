@@ -1,74 +1,137 @@
 #!/bin/bash
 
-set -eoux pipefail
+set -eou pipefail
 
 source common
 
-do_ovn_ipsec_encryption_check () {
+check_ovn_ipsec_enabled () {
     echo "INFO: Ensuring ovn-ipsec is enabled"
     IPSEC_PODS=($(oc -n openshift-ovn-kubernetes get pods -l app=ovn-ipsec -o=jsonpath='{.items[*].metadata.name}'))
+    #IPSEC_ENABLED=($(oc get network.operator.openshift.io/cluster -o=jsonpath='{.items[*].spec.defaultNetwork.ovnKubernetesConfig.ipsecConfig}'))
+
+    # TODO check with oc get network.operator.openshift.io/cluster -o=jsonpath='{.items[*].spec.defaultNetwork.ovnKubernetesConfig.ipsecConfig}'
+    # once tests can be run with real cluster
+    if [ -z "$IPSEC_PODS" ]; then #|| [ "$IPSEC_ENABLED" ]; then
+        echo "INFO: No ovn-ipsec pods exist, tunnel traffic will be unencrypted"
+        return 0
+    else
+        echo "INFO: ovn-ipsec is enabled, tunnel traffic should be encryted"
+        return 1
+    fi
+
+}
+
+do_ovn_ipsec_encryption_check () {
     WORKER_NODES=($(get_worker_nodes_linux))
     DATE=$(date +"%Y-%m-%d")
     PCAP_FILENAME="ipsec-test-${DATE}.pcap"
 
     # TODO check with oc get network.operator.openshift.io/cluster -o=jsonpath='{.items[*].spec.defaultNetwork.ovnKubernetesConfig.ipsecConfig}'
     # once tests can be run with real cluster
-    if [ -z "$IPSEC_PODS" ]; then
-        echo "No ovn-ipsec pods exist, tunnel traffic will be unencrypted --> see $PCAP_FILENAME"
+    if [ -z "$IPSEC_PODS" ]; then #|| [ "$IPSEC_ENABLED" ]; then
+        echo "No ovn-ipsec pods exist, tunnel traffic will be unencrypted"
+        return 0
     else
-        echo "ovn-ipsec is enabled, tunnel traffic should be encryted --> see ${PCAP_FILENAME}"
+        echo "ovn-ipsec is enabled, tunnel traffic should be encryted"
+        return 1
     fi
 
-    echo "ovn-ipsec is enabled"
+}
 
-    client_debug_pod="client-debug"-$(get_random_name); server_debug_pod="server-debug"-$(get_random_name)
+do_ovn_ipsec_encryption_check () {
+    WORKER_NODES=($(get_worker_nodes_linux))
+    DATE=$(date +"%Y-%m-%d")
+    PCAP_FILENAME="ipsec-test-${DATE}.pcap"
+
+    # TODO check with oc get network.operator.openshift.io/cluster -o=jsonpath='{.items[*].spec.defaultNetwork.ovnKubernetesConfig.ipsecConfig}'
+    # once tests can be run with real cluster
+    if ! [ check_ovn_ipsec_enabled ]; then
+        exit 0 
+    fi
+
+    client_debug_pod="client-debug"-$(get_random_name) ||
+    server_debug_pod="server-debug"-$(get_random_name) ||
+    sniffer_debug_pod=$(get_host_network_pod_name ${WORKER_NODES[1]})
 
     create_pod_on_node $client_debug_pod "${WORKER_NODES[0]}"
     create_pod_on_node $server_debug_pod "${WORKER_NODES[1]}"
+    create_host_network_pod_on_node $sniffer_debug_pod "${WORKER_NODES[1]}" "$global_namespace"
 
-    server_debug_pod_ip=$(get_pod_ip $server_debug_pod $(get_current_namespace))
+    server_debug_pod_ip=$(get_pod_ip "$global_namespace" "$server_debug_pod")
 
-    echo "INFO: make sure interface eth0 exists"
+    echo "INFO: Get Ethernet Interface Name"
 
-    if ip link list | grep -q eth0 ; then
-        echo "INFO: interface eth0 exists!"
-        interface="eth0"
-    else
-        echo "INFO: interface eth0 is not up sniff on all interfaces"
-        interface="any"
-    fi
+    interface=$(oc rsh -n "$global_namespace" ${sniffer_debug_pod} ls -l /sys/class/net/ | grep -v virtual | awk -F' ' '{print $9}')
+
+    interface=${interface//$'\n'/}
+    echo "INFO: Ethernet Interface name is: ${interface}"
 
     echo "INFO: packet sniffing command is: tcpdump -i ${interface} -vv -c 2 -w ${PCAP_FILENAME} src \
     $(kubectl get node "${WORKER_NODES[0]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}') \
     && dst $(kubectl get node "${WORKER_NODES[1]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')"
 
-    #start sniffer in background, but only look for packets going over the tunnel from node1 -> node2
+    #start sniffer in host networked pod, but only look for packets going over the tunnel from node1 -> node2
 
-    timeout 30s  tcpdump -i ${interface} -vv -c 2 -w "${PCAP_FILENAME}" \
-    src "$(kubectl get node "${WORKER_NODES[0]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')" and dst "$(kubectl get node "${WORKER_NODES[1]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')" \
+    oc rsh -n "$global_namespace" ${sniffer_debug_pod} timeout 30s  tcpdump -i ${interface} -vv -c 2 -w "${PCAP_FILENAME}" \
+    src "$(kubectl get node "${WORKER_NODES[0]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')" and dst "$(kubectl get node "${WORKER_NODES[1]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')" > /dev/null 2>&1 \
     & PID=$!
 
     echo "INFO: pinging server from client pod: oc rsh ${client_debug_pod} ping ${server_debug_pod_ip} -c 5 -W 2"
 
-    oc rsh ${client_debug_pod} ping "${server_debug_pod_ip}" -c 10 -W 2 > /dev/null 2>&1
-
+    oc rsh -n "$global_namespace" ${client_debug_pod} ping "${server_debug_pod_ip}" -c 10 -W 2 > /dev/null 2>&1
+    
     wait "${PID}"
+
+    oc cp -n "$global_namespace" --loglevel 1 ${sniffer_debug_pod}:/${PCAP_FILENAME} ./${PCAP_FILENAME} > /dev/null 2>&1 && PIDS+=($!)
 
     if [ -f "${PCAP_FILENAME}" ]; then
         if tshark -r "${PCAP_FILENAME}" -T fields -e frame.protocols | grep -q "esp"; then
-            echo "Tunnel traffic is encrypted with ovn-ipsec!"
+            echo " "
+            echo "INFO:Tunnel traffic is encrypted with ovn-ipsec!"
+            echo " "
         else
-            echo "Tunnel traffic is not encrypted, check pcap: ${PCAP_FILENAME} for further details"
+            echo " "
+            echo "INFO:Tunnel traffic is not encrypted, check pcap: ${PCAP_FILENAME} for further details"
+            echo " "
         fi
     else
-        echo "tcpdump error ${PCAP_FILENAME} wasn't written"
+        echo "INFO:tcpdump error ${PCAP_FILENAME} wasn't written"
     fi
 
+    ## cleanup resources
+
+    oc delete pod $server_debug_pod $client_debug_pod $sniffer_debug_pod
+
 }
+
+help()
+{
+    # Display Help
+    echo
+    echo "This script checks that node2node traffic is encrypted when the ipsec feature is enabled an Openshift OVN-kubernetes cluster.
+By default this script spins up two pods (a client and a server) on two different nodes in the openshift-network-tools-* namespace. It also 
+spins up a host networked debug pod which runs a packet sniffer on all traffic passing between the nodes.
+
+Method: We run a ping from the <src-pod> to <dst-pod>. The debug pod running tcpdump captures the packet as it transverses the Geneve tunnel 
+across the nodes and ensures the pack is encrypted wth the ESP protocol.  It will also dump the .pcap capture for further analysis 
+to the debug pod reguardless of a passing or failing test. "
+
+}
+
 
 main () {
     #TODO A better way of ensuring we can contact the API Server, serivce accounts
     do_ovn_ipsec_encryption_check
 }
+
+while getopts ":h" option; do
+    case $option in
+        h) # display Help
+            help
+            exit;;
+    esac
+done
+
+global_namespace="${1}"
 
 main
