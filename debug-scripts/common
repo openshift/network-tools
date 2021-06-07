@@ -13,7 +13,7 @@ create_pod_on_node () {
     oc label node "$NODE_NAME" "$POD_NAME"=network-tools-debug-role
     echo "INFO: Scheduling "$POD_NAME" on "$NODE_NAME""
 
-    oc run "$POD_NAME" --image=quay.io/itssurya/dev-images:07a7498a-c9d5-48c1-8b83-d6d8e2e0ed22 \
+    oc run "$POD_NAME" --image=quay.io/openshift/origin-network-tools:latest \
         --overrides='{ "spec": { "nodeSelector": {"'"$POD_NAME"'": "network-tools-debug-role"} } }' \
         -- /sbin/init
 
@@ -191,7 +191,7 @@ create_host_network_pod_on_node () {
     echo "INFO: Scheduling "$POD_NAME" on "$NODE_NAME""
 
     oc debug --to-namespace="$NAMESPACE" node/"$NODE_NAME" --as-root=true \
-        --preserve-pod=true --image=quay.io/itssurya/dev-images:df97123e-a901-44ce-b28d-6e3757d3738f \
+        --preserve-pod=true --image=quay.io/openshift/origin-network-tools:latest \
         -- bash -c "sleep $TTL" > /dev/null 2>&1 &
 
     # wait till pod is running
