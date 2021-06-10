@@ -10,7 +10,7 @@ OpenShift network-tools contains a set of:
 
 to debug the networking state of a cluster in real time. This tool is currently only supported (has been tested) from OCP4.8.
 
-**NOTE :**  The official supported way of running all scripts and tools are only through the `oc adm network-tools` utility. In certain unprecedented situations like when the api-server is down or networking is not up in the cluster, we might have to directly access the nodes in the cluster to figure out the root cause. In other situations, we may have to access the network namespace of the pod to run specific commands. Some of the scripts in this repository are written with such debugging situations in mind. Although the image is restricted to administrators and priviledges users, care must be taken when running such scripts locally on the cluster. Scripts must be double checked to ensure they do exactly what they intend to do.
+**NOTE :**  The official supported way of running all scripts and tools are only through the `oc adm must-gather` utility. In certain unprecedented situations like when the api-server is down or networking is not up in the cluster, we might have to directly access the nodes in the cluster to figure out the root cause. In other situations, we may have to access the network namespace of the pod to run specific commands. Some of the scripts in this repository are written with such debugging situations in mind. Although the image is restricted to administrators and priviledges users, care must be taken when running such scripts locally on the cluster. Scripts must be double checked to ensure they do exactly what they intend to do.
 
 # How is this different from must-gather?
 

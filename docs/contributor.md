@@ -19,7 +19,7 @@ This repository aims at providing debugging tools for:
 **NOTE :**  All the scripts can be executed using:
 
 ```
-    oc adm network-tools
+    oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest
 ```
 command. Note this is a [WIP] (https://github.com/openshift/oc/pull/709). See the user documentation for more information on how to run existing scripts against an OpenShift cluster.
 
@@ -45,7 +45,7 @@ Please follow the undermentioned instructions when adding a new script to the ne
 - The script should by default create the necessary resources to do the test if the user has not passed any arguments.
 - Each script should be both standalone and at the same time if invoked in the default mode, be compatible when running with the rest of the scripts.
 - Each message printed should fall under either `INFO` or `SUCCESS` or `FAILURE` categories.
-- Should test the functionality of the script with `oc adm network-tools --`. Make sure the script does not break the build and is well tested.
+- Should test the functionality of the script with `oc adm must-gather --`. Make sure the script does not break the build and is well tested.
 - Add documentation regarding what the script does to the user docs.
 - Even though this image can be accessed only by priviledges users/administrators, avoid security vulnerabilites.
 - Use discretion when commands need to be run from a network namespace. First preference would be to use the `oc debug node/xx` command. If there are too many commands to be run create a hostNetwork pod.
