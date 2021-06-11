@@ -82,7 +82,7 @@ do_ovn_ipsec_encryption_check () {
     
     wait "${PID}"
 
-    oc cp -n "$global_namespace" --loglevel 1 ${sniffer_debug_pod}:/${PCAP_FILENAME} ./${PCAP_FILENAME} > /dev/null 2>&1 && PIDS+=($!)
+    oc cp -n "$global_namespace" --loglevel 1 ${sniffer_debug_pod}:/${PCAP_FILENAME} ./${logdir}/${PCAP_FILENAME} > /dev/null 2>&1 && PIDS+=($!)
 
     if [ -f "${PCAP_FILENAME}" ]; then
         if tshark -r "${PCAP_FILENAME}" -T fields -e frame.protocols | grep -q "esp"; then
@@ -121,7 +121,10 @@ to the debug pod reguardless of a passing or failing test. "
 
 main () {
     #TODO A better way of ensuring we can contact the API Server, serivce accounts
-    do_ovn_ipsec_encryption_check
+    BASE_COLLECTION_PATH="must-gather"
+    logdir="$BASE_COLLECTION_PATH/openshift-ovn-ipsec-connectivity"
+    mkdir -p $logdir
+    do_ovn_ipsec_encryption_check |& tee $logdir/log
 }
 
 while getopts ":h" option; do

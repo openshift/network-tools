@@ -21,7 +21,7 @@ This repository aims at providing debugging tools for:
 ```
     oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest
 ```
-command. Note this is a [WIP] (https://github.com/openshift/oc/pull/709). See the user documentation for more information on how to run existing scripts against an OpenShift cluster.
+command. See the user documentation for more information on how to run existing scripts against an OpenShift cluster.
 
 ## Repository Structure
 

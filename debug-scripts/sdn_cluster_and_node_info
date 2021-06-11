@@ -159,19 +159,19 @@ Note: If you want the information only from a single node, you can provide that 
     echo
     echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> sdn_cluster_and_node_info <node-name>"
     echo "or"
-    echo "oc adm network-tools -- sdn_cluster_and_node_info <node-name>"
+    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- sdn_cluster_and_node_info <node-name>"
     echo "or"
     echo "podman run <IMAGE_ID> sdn_cluster_and_node_info"
     echo
 }
 
 main () {
-    BASE_COLLECTION_PATH="network-tools"
+    BASE_COLLECTION_PATH="must-gather"
     logdir="$BASE_COLLECTION_PATH/openshift-sdn-cluster-and-node-info"
     mkdir -p $logdir
     mkdir $logdir/meta
     mkdir $logdir/nodes
-    cluster_info
+    cluster_info |& tee $logdir/log
     node_info "${node_name}" |& tee $logdir/log
 }
 
