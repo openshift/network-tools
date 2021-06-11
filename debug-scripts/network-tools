@@ -23,10 +23,10 @@ if [[ "$network_plugin" == "OVNKubernetes" ]] ; then
     ovn_ipsec_connectivity "$global_namespace"
 elif [[ "$network_plugin" == "OpenShiftSDN" ]] ; then
     # run scripts
-    sdn_cluster_and_node_info
-    # sdn_node_connectivity
     sdn_pod_to_pod_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
     sdn_pod_to_svc_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
+    sdn_cluster_and_node_info
+    # sdn_node_connectivity
 else
     echo "Unable to debug cluster networking. Only OpenShiftSDN and OVNKubernetes plugins are supported"
 fi
