@@ -53,18 +53,21 @@ If the connectivity test fails the script will report failure through logs.
     echo
     echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> sdn_pod_to_pod <src-node-name> <dst-node-name>"
     echo "or"
-    echo "oc adm network-tools -- sdn_pod_to_pod <src-pod-namespace/src-pod-name> <dst-pod-namespace/dst-pod-name>"
+    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- sdn_pod_to_pod <src-pod-namespace/src-pod-name> <dst-pod-namespace/dst-pod-name>"
     echo "or"
-    echo "oc adm network-tools -- sdn_pod_to_pod "" <dst-pod-namespace/dst-pod-name>"
+    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- sdn_pod_to_pod "" <dst-pod-namespace/dst-pod-name>"
     echo "or"
-    echo "oc adm network-tools -- sdn_pod_to_pod <src-pod-namespace/src-pod-name>"
+    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- sdn_pod_to_pod <src-pod-namespace/src-pod-name>"
     echo "or"
     echo "podman run <IMAGE_ID> sdn_pod_to_pod"
     echo
 }
 
 main () {
-    do_pod_to_pod_connectivity_check
+    BASE_COLLECTION_PATH="must-gather"
+    logdir="$BASE_COLLECTION_PATH/openshift-sdn-pod-to-pod-connectivity"
+    mkdir -p $logdir
+    do_pod_to_pod_connectivity_check |& tee $logdir/log
 }
 
 while getopts ":h" option; do

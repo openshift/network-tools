@@ -51,7 +51,10 @@ help()
 }
 
 main () {
-    do_sdn_node_connectivity_check
+    BASE_COLLECTION_PATH="must-gather"
+    logdir="$BASE_COLLECTION_PATH/openshift-sdn-node-connectivity"
+    mkdir -p $logdir
+    do_sdn_node_connectivity_check |& tee $logdir/log
 }
 
 while getopts ":h" option; do

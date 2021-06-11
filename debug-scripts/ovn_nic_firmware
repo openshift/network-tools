@@ -34,7 +34,10 @@ If there is a NIC firmware mismatch, it will show the firmware version mismatch.
 }
 
 main () {
-    do_nic_firmware_check
+    BASE_COLLECTION_PATH="must-gather"
+    logdir="$BASE_COLLECTION_PATH/openshift-ovn-nic-firmware"
+    mkdir -p $logdir
+    do_nic_firmware_check |& tee $logdir/log
 }
 
 while getopts ":h" option; do

@@ -68,18 +68,21 @@ If the connectivity test fails, it will run an ovnkube trace between the pod and
     echo
     echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> ovn_pod_to_svc <src-node-name> <dst-node-name>"
     echo "or"
-    echo "oc adm network-tools -- ovn_pod_to_svc <src-pod-namespace/src-pod-name> <dst-svc-namespace/dst-svc-name>"
+    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- ovn_pod_to_svc <src-pod-namespace/src-pod-name> <dst-svc-namespace/dst-svc-name>"
     echo "or"
-    echo "oc adm network-tools -- ovn_pod_to_svc "" <dst-svc-namespace/dst-svc-name>"
+    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- ovn_pod_to_svc "" <dst-svc-namespace/dst-svc-name>"
     echo "or"
-    echo "oc adm network-tools -- ovn_pod_to_svc <src-pod-namespace/src-pod-name>"
+    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- ovn_pod_to_svc <src-pod-namespace/src-pod-name>"
     echo "or"
     echo "podman run <IMAGE_ID> ovn_pod_to_svc"
     echo
 }
 
 main () {
-    do_pod_to_svc_connectivity_check
+    BASE_COLLECTION_PATH="must-gather"
+    logdir="$BASE_COLLECTION_PATH/openshift-ovn-pod-to-svc-connectivity"
+    mkdir -p $logdir
+    do_pod_to_svc_connectivity_check |& tee $logdir/log
 }
 
 while getopts ":h" option; do
