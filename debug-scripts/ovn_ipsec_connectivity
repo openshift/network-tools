@@ -26,25 +26,6 @@ do_ovn_ipsec_encryption_check () {
     DATE=$(date +"%Y-%m-%d")
     PCAP_FILENAME="ipsec-test-${DATE}.pcap"
 
-    # TODO check with oc get network.operator.openshift.io/cluster -o=jsonpath='{.items[*].spec.defaultNetwork.ovnKubernetesConfig.ipsecConfig}'
-    # once tests can be run with real cluster
-    if [ -z "$IPSEC_PODS" ]; then #|| [ "$IPSEC_ENABLED" ]; then
-        echo "No ovn-ipsec pods exist, tunnel traffic will be unencrypted"
-        return 0
-    else
-        echo "ovn-ipsec is enabled, tunnel traffic should be encryted"
-        return 1
-    fi
-
-}
-
-do_ovn_ipsec_encryption_check () {
-    WORKER_NODES=($(get_worker_nodes_linux))
-    DATE=$(date +"%Y-%m-%d")
-    PCAP_FILENAME="ipsec-test-${DATE}.pcap"
-
-    # TODO check with oc get network.operator.openshift.io/cluster -o=jsonpath='{.items[*].spec.defaultNetwork.ovnKubernetesConfig.ipsecConfig}'
-    # once tests can be run with real cluster
     if ! [ check_ovn_ipsec_enabled ]; then
         exit 0 
     fi
@@ -55,6 +36,9 @@ do_ovn_ipsec_encryption_check () {
 
     create_pod_on_node $client_debug_pod "${WORKER_NODES[0]}"
     create_pod_on_node $server_debug_pod "${WORKER_NODES[1]}"
+
+    global_namespace=$(oc get pod $client_debug_pod -o jsonpath={.metadata.namespace})
+
     create_host_network_pod_on_node $sniffer_debug_pod "${WORKER_NODES[1]}" "$global_namespace"
 
     server_debug_pod_ip=$(get_pod_ip "$global_namespace" "$server_debug_pod")
@@ -66,14 +50,13 @@ do_ovn_ipsec_encryption_check () {
     interface=${interface//$'\n'/}
     echo "INFO: Ethernet Interface name is: ${interface}"
 
-    echo "INFO: packet sniffing command is: tcpdump -i ${interface} -vv -c 2 -w ${PCAP_FILENAME} src \
-    $(kubectl get node "${WORKER_NODES[0]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}') \
-    && dst $(kubectl get node "${WORKER_NODES[1]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')"
+    tcpdump_expression="src $(kubectl get node "${WORKER_NODES[0]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}') \
+      and dst $(kubectl get node "${WORKER_NODES[1]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')"
+    tcpdump_command="tcpdump -i ${interface} -vv -c 2 -w ${PCAP_FILENAME} ${tcpdump_expression}"
 
+    echo "INFO: packet sniffing command is: ${tcpdump_command}"
     #start sniffer in host networked pod, but only look for packets going over the tunnel from node1 -> node2
-
-    oc rsh -n "$global_namespace" ${sniffer_debug_pod} timeout 30s  tcpdump -i ${interface} -vv -c 2 -w "${PCAP_FILENAME}" \
-    src "$(kubectl get node "${WORKER_NODES[0]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')" and dst "$(kubectl get node "${WORKER_NODES[1]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')" > /dev/null 2>&1 \
+    oc rsh -n "$global_namespace" ${sniffer_debug_pod} timeout 30s ${tcpdump_command} > /dev/null 2>&1 \
     & PID=$!
 
     echo "INFO: pinging server from client pod: oc rsh ${client_debug_pod} ping ${server_debug_pod_ip} -c 5 -W 2"
@@ -84,14 +67,14 @@ do_ovn_ipsec_encryption_check () {
 
     oc cp -n "$global_namespace" --loglevel 1 ${sniffer_debug_pod}:/${PCAP_FILENAME} ./${logdir}/${PCAP_FILENAME} > /dev/null 2>&1 && PIDS+=($!)
 
-    if [ -f "${PCAP_FILENAME}" ]; then
-        if tshark -r "${PCAP_FILENAME}" -T fields -e frame.protocols | grep -q "esp"; then
+    if [ -f "./${logdir}/${PCAP_FILENAME}" ]; then
+        if tshark -r "./${logdir}/${PCAP_FILENAME}" -T fields -e frame.protocols | grep -q "esp"; then
             echo " "
             echo "INFO:Tunnel traffic is encrypted with ovn-ipsec!"
             echo " "
         else
             echo " "
-            echo "INFO:Tunnel traffic is not encrypted, check pcap: ${PCAP_FILENAME} for further details"
+            echo "INFO:Tunnel traffic is not encrypted, check pcap: "./${logdir}/${PCAP_FILENAME}" for further details"
             echo " "
         fi
     else
@@ -99,9 +82,7 @@ do_ovn_ipsec_encryption_check () {
     fi
 
     ## cleanup resources
-
     oc delete pod $server_debug_pod $client_debug_pod $sniffer_debug_pod
-
 }
 
 help()
@@ -134,7 +115,5 @@ while getopts ":h" option; do
             exit;;
     esac
 done
-
-global_namespace="${1}"
 
 main
