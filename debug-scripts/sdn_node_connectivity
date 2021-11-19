@@ -26,7 +26,7 @@ do_sdn_node_connectivity_check() {
     for node in $(oc get hostsubnet -o name); do
         local success=overlay
         if ! ping $(sdn_overlay_ip "${node}") -w 2 -W 1 2>&1 >/dev/null ; then
-            sucess=underlay
+            success=underlay
             if ! ping $(sdn_underlay_ip "${node}") -w 2 -W 1 2>&1 >/dev/null ; then
 	              success=no
             fi

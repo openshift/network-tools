@@ -14,7 +14,7 @@ create_pod_on_node () {
     echo "INFO: Scheduling "$POD_NAME" on "$NODE_NAME""
 
     oc run "$POD_NAME" --image=quay.io/openshift/origin-network-tools:latest \
-        --overrides='{ "spec": { "nodeSelector": {"'"$POD_NAME"'": "network-tools-debug-role"} } }' \
+        --overrides='{ "spec": { "nodeSelector": {"'"$POD_NAME"'": "network-tools-debug-role"}, "tolerations": [{"key": "node-role.kubernetes.io/master", "effect": "NoSchedule", "operator": "Exists"}] }}' \
         -- /sbin/init
 
     # wait till pod is running
@@ -35,7 +35,8 @@ create_svc () {
     # TODO: Allow users to specify which svc type they want to test
     oc expose pod/"$SVC_NAME" --port=80
     # wait till svc endpoint is created
-    while [[ $(oc get ep "$SVC_NAME" -o 'jsonpath={.subsets[0].addresses[0].ip}') == "" ]]; do echo "waiting for svc" && sleep 1; done
+    WAIT_TIME=0
+    while [[ $(oc get ep "$SVC_NAME" -o 'jsonpath={.subsets[0].addresses[0].ip}') == "" && ${WAIT_TIME} -le 30 ]]; do echo "waiting for svc" && ((WAIT_TIME++)) && sleep 1; done
 }
 
 get_random_name () {
@@ -99,16 +100,6 @@ get_svc_ip () {
     oc get svc -n "$namespace" "$name" -o 'jsonpath={.spec.clusterIP}'
 }
 
-get_current_namespace () {
-    local namespace=$(oc config view --minify --output 'jsonpath={..namespace}')
-    if [ -z "$namespace" ]; 
-    then   
-       echo "default"
-    else 
-       oc config view --minify --output 'jsonpath={..namespace}'
-    fi
-}
-
 run_command_inside_pod_network_namespace() {
     local namespace="${1}"
     local pod="${2}"
@@ -120,7 +111,7 @@ run_command_inside_pod_network_namespace() {
     ans=$(oc debug \
         node/$(get_pod_node "$namespace" "$pod") \
         -- chroot /host bash -c \
-        "nsenter -n -t \$(runc state \$(crictl pods --namespace "$namespace" --name "$pod" -q) | jq .pid) $command")
+        "nsenter -n -t \$(runc state \$(crictl ps --pod \$(crictl pods --namespace "$namespace" --name "$pod" -q) -q) | jq .pid) $command")
     echo "INFO: $ans"
 
     # since we cannot trust the return code from the debug container, we have to add logic to consider
