@@ -190,7 +190,7 @@ Default scripts are:
 
 # Running custom commands
 
-`network-tools` image has some packets installed:
+`network-tools` image has some packages installed that can be useful for debugging:
 * nginx
 * numactl
 * traceroute
@@ -198,6 +198,7 @@ Default scripts are:
 * conntrack-tools
 * perf
 * iproute
+* ovnkube-trace
 
 You can run custom command from `network-tools` container by
 `oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- timeout <n> <cmd>`
@@ -236,3 +237,24 @@ To copy a folder from network-tools container use `--source-dir '<container dir>
   timeout 30 tcpdump -i any -w /tmp/tcpdump/\$POD_NAME-%Y-%m-%dT%H:%M:%S.pcap -W 1 -G 300
   ```
 
+* Run `ovnkube-trace` for troubleshooting traffic flows:
+
+  Let's say you have two pods `multitool-756669cf4f-bhx64` and `multitool-756669cf4f-6bftt` in default namespace.
+  ```
+    $ oc get pods
+    NAME                         READY   STATUS    RESTARTS   AGE
+    multitool-756669cf4f-6bftt   1/1     Running   0          5m27s
+    multitool-756669cf4f-bhx64   1/1     Running   0          5m27s
+  ```
+   To run a trace between them:
+   ```
+    oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- ovnkube-trace -dst-namespace default -dst multitool-756669cf4f-bhx64 -src-namespace default -src multitool-756669cf4f-6bftt -tcp -loglevel 5
+    [must-gather      ] OUT Using must-gather plugin-in image: quay.io/openshift/origin-network-tools:latest
+    [must-gather      ] OUT namespace/openshift-must-gather-zm2mj created
+    [must-gather      ] OUT clusterrolebinding.rbac.authorization.k8s.io/must-gather-4gcvh created
+    [must-gather      ] OUT pod for plug-in image quay.io/openshift/origin-network-tools:latest created
+    [must-gather-gq2ln] POD I0217 13:39:39.939788       8 ovs.go:95] Maximum command line arguments set to: 191102
+    [must-gather-gq2ln] POD I0217 13:39:39.940114       8 ovnkube-trace.go:517] Log level set to: 5
+    <snipped>.....
+   ```
+   Checkout https://github.com/ovn-org/ovn-kubernetes/blob/master/docs/ovnkube-trace.md for more details regarding ovnkube-trace utility.
