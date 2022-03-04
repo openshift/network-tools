@@ -106,7 +106,7 @@ run_command_inside_pod_network_namespace() {
     local command="${3}"
 
     echo
-    echo "INFO: Running $command in the netns of pod $pod"
+    echo "INFO: Running $command in the netns $namespace of pod $pod"
 
     ans=$(oc debug \
         node/$(get_pod_node "$namespace" "$pod") \
@@ -121,6 +121,8 @@ run_command_inside_pod_network_namespace() {
     elif [[ "$command" == *"ping"* ]]; then
         if [[ "$ans" == *", 0% packet loss"* ]]; then return 0; else return 1; fi
     fi
+
+    
 }
 
 # check_existing_resources checks if the user provided input refers to

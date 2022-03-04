@@ -200,6 +200,8 @@ Default scripts are:
 * iproute
 * ovnkube-trace
 
+You can run these commands inside a specific pods network namespace using the `run_command_inside_pod_netns` script
+
 You can run custom command from `network-tools` container by
 `oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- timeout <n> <cmd>`
 
@@ -228,6 +230,7 @@ To choose a node to run network-tools container use `--node-name=''`
 To run network-tools containers on multiple nodes use `--node-selector 'kubernetes.io/os=linux,node-role.kubernetes.io/master'`
 
 To copy a folder from network-tools container use `--source-dir '<container dir>'`
+
 
 ## Examples
 * Run tcpdump on all master nodes
