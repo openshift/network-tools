@@ -1,0 +1,16 @@
+#!/bin/bash
+
+source common
+
+#this script allows the user to pass in args from the command line to run commands inside the network namespace of a pod
+
+#example -- ./run_command_inside_pod_netns <namespace> <pod-name> '<command>'
+
+#common commands that are useful to run in the network namespace of a pod are tcpdump, nsloopup, and ip commands
+
+namespace="${1}"
+pod="${2}"
+command="${3}"
+
+#this function is built into network tools and is located at /debug-scripts/common
+run_command_inside_pod_network_namespace "$namespace" "$pod" "$command"
