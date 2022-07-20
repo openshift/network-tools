@@ -1,17 +1,16 @@
 reviewers:
   - abhat
-  - alexanderConstantinescu
   - aojea
   - danwinship
   - dcbw
   - JacobTanenbaum
-  - squeed
   - tssurya
   - dougbtv
   - s1061123
   - zshi-redhat
   - pliurh
   - astoycos
+  - npinaeva
 approvers:
   - abhat
   - danwinship
@@ -23,4 +22,5 @@ approvers:
   - pliurh
   - tssurya
   - astoycos
+  - npinaeva
 component: "Networking"
