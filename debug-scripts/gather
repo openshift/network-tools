@@ -1,4 +1,0 @@
-#!/bin/bash
-
-# Invoke network-tools script. Entry point when using must-gather.
-/usr/bin/network-tools

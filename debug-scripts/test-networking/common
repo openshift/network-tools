@@ -1,10 +1,11 @@
 #!/bin/bash
+source ./utils
 
 create_pod_on_node () {
     local POD_NAME="${1}"
     local NODE_NAME="${2}"
 
-    if [ -z $NODE_NAME ] || [ -z $(get_node_by_name $NODE_NAME) ]; then
+    if [ -z $NODE_NAME ] || [ -z "$(get_node_by_name $NODE_NAME)" ]; then
         # no node or non-existing node is specified, so we pick any one node to schedule the pod.
         worker_nodes=($(get_worker_nodes_all))
         NODE_NAME=${worker_nodes[0]}
@@ -40,7 +41,7 @@ create_svc () {
 }
 
 get_random_name () {
-    cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 5 | head -n 1
+    head /dev/urandom | tr -dc 'a-z0-9' | fold -w 5 | head -n 1
 }
 
 get_pod_ip() {
@@ -106,14 +107,16 @@ run_command_inside_pod_network_namespace() {
     local command="${3}"
 
     echo
-    echo "INFO: Running $command in the netns of pod $pod"
+    echo "INFO: Running \"$command\" in the netns of pod $pod"
 
-    ans=$(oc debug \
-        node/$(get_pod_node "$namespace" "$pod") \
-        -- chroot /host bash -c \
-        "nsenter -n -t \$(runc state \$(crictl ps --pod \$(crictl pods --namespace "$namespace" --name "$pod" -q) -q) | jq .pid) $command")
-    echo "INFO: $ans"
+    node_name="$(get_pod_node "$namespace" "$pod")"
+    ans="$(oc debug node/"$node_name" -- chroot /host bash -c \
+        "nsenter -n -t \$(runc state \$(crictl ps --pod \$(crictl pods --namespace $namespace --name $pod -q) -q) | jq .pid) $command")"
+    echo "
+INFO: command output
 
+$ans
+"
     # since we cannot trust the return code from the debug container, we have to add logic to consider
     # success and failure for each command.
     if [[ "$command" == *"nc -z -v"* ]]; then
@@ -129,7 +132,7 @@ check_existing_resources () {
     local type=${1}
     # if namespace provided is empty, then set it to default.
     if [ -z $ns ]; then ns=default; fi
-    if [ -z $resource_name ] || [ -z $(get_${type}_by_name $ns $resource_name) ]; then
+    if [ -z $resource_name ] || [ -z "$(get_${type}_by_name $ns $resource_name)" ]; then
         # no existing resource is specified, so we need to create a new resource for the test.
         resource_name="network-tools-debug"-${type}-$(get_random_name)
         if [[ "$type" == "pod" ]]; then func=create_pod_on_node; else func=create_svc; fi
@@ -188,4 +191,40 @@ create_host_network_pod_on_node () {
     # wait till pod is running
     sleep 2
     oc wait -n "$NAMESPACE" --for=condition=Ready pod/"$POD_NAME" --timeout=3m
+}
+
+LOCAL_NS="network-tools"
+
+function ctrl_c() {
+    echo "Cleanup namespace in progress"
+    oc project default
+    oc delete ns $LOCAL_NS
+    oc wait namespace/$LOCAL_NS --for=delete --timeout=30s
+    echo "Cleanup namespace DONE"
+}
+
+ensure_ns () {
+    if [ -z "$POD_NAME" ]; then
+      if ! oc get namespace $LOCAL_NS > /dev/null 2>&1; then
+        echo "Creating $LOCAL_NS namespace"
+        oc create ns $LOCAL_NS
+        oc project $LOCAL_NS
+        trap ctrl_c EXIT
+      else
+        echo "ns exist"
+      fi
+    fi
+}
+
+prepare_logdir () {
+  subfolder="$1"
+  if [ -z "$POD_NAME" ]; then
+    export LOGDIR=${LOGDIR:-"./network-test-logs-$(get_random_name)"}
+    logdir="$LOGDIR/$subfolder"
+    ensure_output_dir $logdir
+  else
+    logdir="/must-gather/$subfolder"
+    mkdir -p $logdir
+    echo $logdir
+  fi
 }

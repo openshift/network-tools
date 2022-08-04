@@ -1,0 +1,5 @@
+#!/bin/bash
+
+declare -Ag INTERNAL_COMMANDS=(
+    ["ovn-db-run-locally"]="./local-scripts/ovn-db-run-locally"
+)

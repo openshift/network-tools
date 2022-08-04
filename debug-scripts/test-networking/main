@@ -1,0 +1,66 @@
+#!/bin/bash
+set -eo pipefail
+
+source ./test-networking/common
+source ./utils
+
+description() {
+  echo "Runs connectivity checks for ovn-kubernetes or openshift-sdn networking plugins"
+}
+
+help() {
+  echo "Run default debug sequence based on Networking plugin.
+Only OpenShiftSDN and OVNKubernetes plugins are supported for now. You can also run all scripts manually and provide
+some options.
+
+  Default scripts are:
+  * OVNKubernetes = ovn_pod_to_pod_connectivity, ovn_pod_to_svc_connectivity, ovn_ipsec_connectivity
+  * OpenshiftSDN = sdn_pod_to_pod_connectivity, sdn_pod_to_svc_connectivity, sdn_cluster_and_node_info
+
+Usage: $USAGE
+
+Examples:
+  $USAGE
+
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
+"
+}
+
+function main() {
+  ensure_ns
+  network_plugin=$(get_network_plugin)
+  echo "INFO: Cluster is using $network_plugin network plugin"
+  # Create basic resources that can be reused for any test.
+  # NOTE: Test specific resources should be created within the script.
+
+  client="network-tools-debug-pod-$(get_random_name)"
+  server="network-tools-debug-svc"-$(get_random_name)
+  create_pod_on_node $client
+  create_svc $server
+  global_namespace=$(oc get pod $client -o jsonpath={.metadata.namespace})
+  # make sure all script will have the same output dir
+  export LOGDIR=${LOGDIR:-"./network-test-logs-$(get_random_name)"}
+  if [[ "$network_plugin" == "$OVN_PLUGIN" ]] ; then
+      # run scripts
+      ./test-networking/ovn_pod_to_pod_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
+      ./test-networking/ovn_pod_to_svc_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
+      ./test-networking/ovn_ipsec_connectivity
+  elif [[ "$network_plugin" == "$SDN_PLUGIN" ]] ; then
+      # run scripts
+      ./test-networking/sdn_pod_to_pod_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
+      ./test-networking/sdn_pod_to_svc_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
+      ./test-networking/sdn_cluster_and_node_info
+      if [ ! -z "$POD_NAME" ]; then
+#        sdn_node_connectivity should not be run locally, $POD_NAME will be set when running with must-gather
+        ./test-networking/sdn_node_connectivity
+      fi
+  else
+      echo "Unable to debug cluster networking. Only OpenShiftSDN and OVNKubernetes plugins are supported"
+  fi
+}
+
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac
