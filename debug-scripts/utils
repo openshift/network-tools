@@ -64,13 +64,26 @@ get_ns_pid() {
 
 run_command_inside_pod_network_namespace_with_network_tools() {
     SLEEP=""
-    if [[ "$1" == "--preserve-pod" ]]; then
+    if [[ "$1" == "--preserve-pod" || "$1" == "-pp" ]]; then
        SLEEP="; echo DONE; sleep 300"
        shift
     fi
+    left_braces=""
+    right_braces=""
+    if [[ "$1" == "--multiple-commands" || "$1" == "-mc" ]]; then
+      shift
+      left_braces="\""
+      right_braces="\""
+    fi
+    if [[ "$1" == "--no-substitution" || "$1" == "-ns" ]]; then
+      shift
+      left_braces="'"
+      right_braces="'"
+    fi
     local namespace="${1}"
     local pod="${2}"
-    local command="${*:3}"
+
+    local command="$left_braces${*:3}$right_braces"
 
     node_name="$(get_pod_node "$namespace" "$pod")"
     ns_pid="$(get_ns_pid "$namespace" "$pod")"
@@ -86,12 +99,11 @@ nsenter -n -t $ns_pid <command>
       oc debug node/"$node_name" --image=$NETWORK_TOOLS_IMAGE
     else
       echo
-      echo "INFO: Running \"$command\" in the netns of pod $pod"
-      FULL_COMMAND="nsenter -n -t $ns_pid $command"
+      echo "INFO: Running $command in the netns of pod $pod"
+      FULL_COMMAND="nsenter -n -t $ns_pid /bin/bash -c $command"
       if [ -n "$SLEEP" ]; then
         FULL_COMMAND="($FULL_COMMAND) $SLEEP"
       fi
-
       oc debug node/"$node_name" --image=$NETWORK_TOOLS_IMAGE -- bash -c "$FULL_COMMAND"
     fi
 }

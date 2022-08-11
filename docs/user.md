@@ -201,6 +201,108 @@ Examples:
   oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-metrics-list /must-gather
 
 ```
+* `network-tools pod-run-netns-command`
+
+```
+Runs command from network-tools container within existing pod netnamespace.
+First run for a node can take a little longer, since network-tools image needs to be downloaded.
+
+WARNING! All arguments and flags should be passed in the exact order as they listed below.
+
+Options:
+  -it:
+      To get interactive shell from network-tools container and run multiple commands use -it option.
+      It will create a debug pod and print nsenter command you need to use to run commands for pod netnamespace.
+
+      WARNING! Don't use -it flag when running network-tools with must-gather.
+
+  --preserve-pod, -pp:
+      Automatically downloading command output can be challenging. See below for explanation.
+      --preserve-pod option will save debug pod for 5 minutes, that should give you enough time to copy files
+      (see examples below)
+
+  --multiple-commands, -mc:
+      To run multiple commands, like "command1; command2" use this flag, and surround commands
+      with double quotes for local run ("command"), and with a combination of single and double quotes
+      for must-gather ('"<command>"').
+      See examples for more details
+
+  --no-substitution, -ns:
+      To preserve the literal meaning of the command you want run, prevent reserved words from being recognized as such,
+      and prevent parameter expansion and command substitution, use this flag and surround commands
+      with single quotes for local run ('command'), and with a sequence of quotes for must-gather run
+      ("'"'command'"'").
+      See examples for more details
+
+WARNING! Command will be executed from a debug pod, it means that copying files created as a result of
+your command execution may be challenging. You can forward command output to /must-gather (see examples below),
+but for commands like "tcpdump -w pcap_file" automatically downloading pcap_file is not possible.
+Use --preserve-pod option to save debug pod for 5 minutes, that should give you enough time to copy files (see
+examples below)
+
+WARNING! Don't forget to set timeout for long-running commands with must-gather,
+if you just Ctrl+C it won't cleanup must-gather resources.
+Must-gather has a default 10 min timeout for every command, if you need to change it use --timeout option.
+
+Usage: network-tools pod-run-netns-command [-it] [-pp] [-mc] [-ns] namespace pod [command]
+
+Examples:
+  network-tools pod-run-netns-command default hello-pod nc -z -v <ip> <port>
+  network-tools pod-run-netns-command -it default hello-pod
+  network-tools pod-run-netns-command default hello-pod tcpdump
+  network-tools pod-run-netns-command default hello-pod timeout 10 tcpdump > <local_path>
+
+  To run multiple commands, use
+      network-tools pod-run-netns-command --multiple-commands default hello-pod "<command1>; <command2>"
+      Example:
+        network-tools pod-run-netns-command -mc default hello-pod "ifconfig; ip a"
+  To prevent parameter expansion, use
+      network-tools pod-run-netns-command --no-substitution default hello-pod '<command to run>'
+      Example:
+        network-tools pod-run-netns-command -ns default hello-pod 'i=0; ip a; i=$(( $i + 1 )); echo $i'
+
+  If the command you are running generates a file instead of printing to stdout, you can download that file by preserving debug pod
+      [terminal1] network-tools pod-run-netns-command --preserve-pod default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
+      # wait for DONE printed, note "Starting pod/PODNAME" log)
+      [terminal2] oc cp PODNAME:/tmp/tcpdump.pcap <local_path>
+      # you can Ctrl+C terminal1 when you don't need debug pod anymore)
+
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+      network-tools pod-run-netns-command default hello-pod nc -z -v <ip> <port>
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+      "network-tools pod-run-netns-command default hello-pod ping 8.8.8.8 -c 5 > /must-gather/ping"
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+      "network-tools pod-run-netns-command default hello-pod timeout 30 tcpdump > /must-gather/tcpdump_output"
+
+  To run multiple commands, use
+      oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+          network-tools pod-run-netns-command --multiple-commands default hello-pod '"<command1>; <command2>"'
+      Example:
+          oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+              network-tools pod-run-netns-command -mc default hello-pod '"ifconfig; ip a"'
+  To prevent parameter expansion, use
+      oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+          network-tools pod-run-netns-command --no-substitution default hello-pod "'"'<command to run>'"'"
+      Example:
+          oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+              network-tools pod-run-netns-command -ns default hello-pod "'"'i=0; ip a; i=$(( $i + 1 )); echo $i'"'"
+
+  If the command you are running generates a file instead of output, you can download that file by preserving debug pod
+      [terminal1] oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest --  \
+          network-tools pod-run-netns-command --preserve-pod default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
+
+      # wait for
+      # [must-gather-fj4hp] POD 2022-07-29T15:23:03.977676789Z DONE
+      # printed, note log
+      # [must-gather-fj4hp] POD 2022-07-29T15:22:53.001812898Z Starting pod/PODNAME ...
+      # also note
+      # [must-gather      ] OUT namespace/MG_NAMESPACE created)
+      # use these names to compose cp command:
+
+      [terminal2] oc cp -n MG_NAMESPACE PODNAME:/tmp/tcpdump.pcap <local_path>
+      # DON'T Ctrl+C terminal1 - wait for must-gather to finish by itself
+
+```
 * `network-tools network-test`
 
 ```
