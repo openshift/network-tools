@@ -1,10 +1,12 @@
 #!/bin/bash
-source common
+set -eo pipefail
+
+source ./test-networking/common
 
 run_command_inside_host_network_pod () {
     local host_network_pod_name="${1}"
     local command="${2}"
-    echo "INFO: oc exec $host_network_pod_name -- chroot /host bash -c "$command""
+    echo "INFO: oc exec $host_network_pod_name -- chroot /host bash -c $command"
     oc exec $host_network_pod_name -- chroot /host bash -c "$command"
 }
 
@@ -64,32 +66,32 @@ node_info () {
         mkdir -p $lognode
 
         host_pod_name=$(get_host_network_pod_name "$node" "$ns")
-        echo "INFO: Creating host-network-pod "$host_pod_name" on node "$node" to gather information"
+        echo "INFO: Creating host-network-pod $host_pod_name on node $node to gather information"
         create_host_network_pod_on_node "$host_pod_name" "$node" "$ns"
 
         # Log the generic system stuff
         log_system "$lognode"
+        sdn_container="$(oc get pods -n openshift-sdn --field-selector spec.nodeName=${node} -l app=sdn -o=jsonpath='{.items..metadata.name}')"
 
-        openvswitch_cont_id=$(oc exec $host_pod_name -- chroot /host bash -c "crictl ps --name openvswitch -q")
-        echo "INFO: ovs container id on node $node is $openvswitch_cont_id"
+        echo "INFO: sdn container on node $node is $sdn_container"
 
         echo "INFO: Gathering ovs-dpctl dump-dps from ovs pod on node $node"
-        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id ovs-dpctl dump-dps" &> $lognode/ovs-dpctl-dump-dps
+        oc exec -c sdn $sdn_container -n openshift-sdn -- /bin/bash -c "ovs-dpctl dump-dps" &> $lognode/ovs-dpctl-dump-dps
 
         echo "INFO: Gathering ovs-dpctl show -s from ovs pod on node $node"
-        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id ovs-dpctl show -s" &> $lognode/ovs-dpctl-show-s
+        oc exec -c sdn $sdn_container -n openshift-sdn -- /bin/bash -c "ovs-dpctl show -s" &> $lognode/ovs-dpctl-show-s
 
         echo "INFO: Gathering ovs-dpctl dump-flows from ovs pod on node $node"
-        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id ovs-dpctl dump-flows" &> $lognode/ovs-dpctl-dump-flows
+        oc exec -c sdn $sdn_container -n openshift-sdn -- /bin/bash -c "ovs-dpctl dump-flows" &> $lognode/ovs-dpctl-dump-flows
 
         echo "INFO: Gathering ovs-dpctl dump-conntrack from ovs pod on node $node"
-        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id ovs-dpctl dump-conntrack" &> $lognode/ovs-dpctl-dump-conntrack
+        oc exec -c sdn $sdn_container -n openshift-sdn -- /bin/bash -c "ovs-dpctl dump-conntrack" &> $lognode/ovs-dpctl-dump-conntrack
 
         echo "INFO: Gathering conntrack -L from ovs pod on node $node"
-        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id conntrack -L" &> $lognode/conntrack-l
+        oc exec -c sdn $sdn_container -n openshift-sdn -- /bin/bash -c "conntrack -L" &> $lognode/conntrack-l
 
         echo "INFO: Gathering ovs-dpctl ct-stats-show from ovs pod on node $node"
-        run_command_inside_host_network_pod $host_pod_name "crictl exec $openvswitch_cont_id ovs-dpctl ct-stats-show" &> $lognode/ovs-dpctl-ct-stats-show
+        oc exec -c sdn $sdn_container -n openshift-sdn -- /bin/bash -c "ovs-dpctl ct-stats-show" &> $lognode/ovs-dpctl-ct-stats-show
 
         echo "INFO: Gathering tc qdisc show from node $node"
         run_command_inside_host_network_pod $host_pod_name "tc qdisc show" &> $lognode/tc-qdisc
@@ -120,7 +122,7 @@ echo_and_eval () {
 
 cluster_info () {
     logcluster=$logdir/cluster
-    mkdir -p $logcluster
+    mkdir -p "$logcluster"
 
     echo "INFO: Gathering cluster wide info like nodes, pods, svc, eps, routes, hostsubnets, netns"
     # Get the cluster wide information
@@ -144,8 +146,11 @@ cluster_info () {
     oc get pods --all-namespaces --template '{{range .items}}{{if .status.containerStatuses}}{{if (index .status.containerStatuses 0).ready}}{{if not .spec.hostNetwork}}{{.spec.nodeName}}    {{.status.hostIP}}    {{.metadata.name}}    {{.metadata.namespace}}    {{.status.podIP}}    {{printf "%.21s" (index .status.containerStatuses 0).containerID}}{{"\n"}}{{end}}{{end}}{{end}}{{end}}' | sed -e 's|crio://||' > $logdir/meta/podinfo
 }
 
+description() {
+ echo "Get cluster objects and host network info for every node on an Openshift SDN cluster"
+}
+
 help() {
-    # Display Help
     echo
     echo "This script queries and displays some important cluster information:
 - nodes, pods, services, endpoints, routers, clusternetwork, hostsubnets, netnamespace
@@ -153,36 +158,31 @@ on a SDN cluster.
 
 It also by default spins up a host-network pod on each node in the cluster and grabs the following info:
 - interface information, ip a, ip ro, iptables-save, ovs dump-flows, conntrack-dump, ct-stats, crictl ps -v
+When run locally it will create must-gather folder in the current directory
 
 Note: If you want the information only from a single node, you can provide that node's name as an argument.
+
+Usage: $USAGE [node_name]
+
+Examples:
+  $USAGE
+
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
 "
-    echo
-    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> sdn_cluster_and_node_info <node-name>"
-    echo "or"
-    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- sdn_cluster_and_node_info <node-name>"
-    echo "or"
-    echo "podman run <IMAGE_ID> sdn_cluster_and_node_info"
-    echo
 }
 
 main () {
-    BASE_COLLECTION_PATH="must-gather"
-    logdir="$BASE_COLLECTION_PATH/openshift-sdn-cluster-and-node-info"
-    mkdir -p $logdir
+    node_name="${1:-}"
+    ensure_ns
+    logdir=$(prepare_logdir openshift-sdn-cluster-and-node-info)
     mkdir $logdir/meta
     mkdir $logdir/nodes
     cluster_info |& tee $logdir/log
     node_info "${node_name}" |& tee $logdir/log
 }
 
-while getopts ":h" option; do
-    case $option in
-        h) # display Help
-            help
-            exit;;
-    esac
-done
-
-node_name="${1}"
-
-main
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

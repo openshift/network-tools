@@ -1,6 +1,8 @@
 #!/bin/bash
+set -eo pipefail
 
-source common
+source ./test-networking/common
+source ./utils
 
 validate_input () {
 
@@ -36,49 +38,52 @@ do_pod_to_pod_connectivity_check () {
     fi
 }
 
+description() {
+  echo "Check pod2pod connectivity on an Openshift SDN cluster"
+}
+
 help()
 {
     # Display Help
     echo
-    echo "This script checks pod2pod connectivity on a SDN cluster.
-By default this script spins up two pods (a client and a server) in the openshift-network-tools-* namespace. You can optionally
-supply the script with a pair of source and destination names. These can either be the source and destination node names on
-which the debug pods should be scheduled or they can be existing pod names (format: <namespace/pod-name>) to run the connectivity
-test.
+    echo "This script checks pod2pod connectivity on an Openshift SDN cluster.
+By default this script spins up two pods (a client and a server) in the debug namespace.
+You can optionally supply the script with a pair of source and destination names.
+These can either be the source and destination node names on which the debug pods should be scheduled
+or they can be existing pod names (format: <namespace/pod-name>) to run the connectivity test.
 
 Method: We run a ping from the network namespace of the src-pod to the dst-pod to check connectivity.
 
 If the connectivity test fails the script will report failure through logs.
+
+Usage: $USAGE [src] [dst]
+
+Examples:
+  $USAGE
+  $USAGE <src-node-name> <dst-node-name>
+  $USAGE <src-pod-namespace>/<src-pod-name> <dst-pod-namespace>/<dst-pod-name>
+  $USAGE \"\" <dst-pod-namespace>/<dst-pod-name>
+  $USAGE <src-pod-namespace>/<src-pod-name>
+
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE <src-node-name> <dst-node-name>
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE <src-pod-namespace>/<src-pod-name> <dst-pod-namespace>/<dst-pod-name>
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE \\\"\\\" <dst-pod-namespace>/<dst-pod-name>
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE <src-pod-namespace>/<src-pod-name>
 "
-    echo
-    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> sdn_pod_to_pod <src-node-name> <dst-node-name>"
-    echo "or"
-    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- sdn_pod_to_pod <src-pod-namespace/src-pod-name> <dst-pod-namespace/dst-pod-name>"
-    echo "or"
-    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- sdn_pod_to_pod "" <dst-pod-namespace/dst-pod-name>"
-    echo "or"
-    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- sdn_pod_to_pod <src-pod-namespace/src-pod-name>"
-    echo "or"
-    echo "podman run <IMAGE_ID> sdn_pod_to_pod"
-    echo
 }
 
 main () {
-    BASE_COLLECTION_PATH="must-gather"
-    logdir="$BASE_COLLECTION_PATH/openshift-sdn-pod-to-pod-connectivity"
-    mkdir -p $logdir
+    ensure_ns
+    logdir=$(prepare_logdir openshift-sdn-pod-to-pod-connectivity)
     do_pod_to_pod_connectivity_check |& tee $logdir/log
 }
-
-while getopts ":h" option; do
-    case $option in
-        h) # display Help
-            help
-            exit;;
-    esac
-done
 
 src_name="${1}"
 dst_name="${2}"
 
-main
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

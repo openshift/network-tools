@@ -1,0 +1,29 @@
+#!/bin/bash
+set -euo pipefail
+
+description() {
+  echo "One-line description"
+}
+
+help () {
+  echo "This script is a template. Explain how it works here.
+
+USAGE will be set by network-tools and = \"network-tools script-name\"
+
+Usage: $USAGE arg1 arg2
+
+Examples:
+  $USAGE str1 str2
+  $USAGE str3 str4
+"
+}
+
+main() {
+  echo "main func"
+}
+
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

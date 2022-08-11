@@ -1,0 +1,27 @@
+#!/bin/bash
+
+DOCS_FILE="./docs/user.md"
+SEPARATOR="The following part of this file is auto-generated based on commands help."
+
+
+print_help() {
+    ./debug-scripts/network-tools -h | tail -n +4 |
+      while IFS= read -r line
+      do
+        #echo new line
+        #echo "$line"
+        command=$(echo $line | cut -d ":" -f 1)
+        if [ ! -z "$command" ]; then
+            echo "* \`network-tools $command\`"
+            echo
+            echo "\`\`\`"
+            ./debug-scripts/network-tools $command -h
+            echo "\`\`\`"
+        fi
+      done
+}
+
+auto_generated_start=$(( $(grep -n "$SEPARATOR" $DOCS_FILE | cut -d: -f 1) +1 ))
+sed -i "$auto_generated_start,$ d" $DOCS_FILE
+
+print_help >> $DOCS_FILE

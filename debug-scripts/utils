@@ -1,0 +1,98 @@
+#!/bin/bash
+set -eo pipefail
+
+OVN_NAMESPACE="openshift-ovn-kubernetes"
+OVN_PLUGIN="OVNKubernetes"
+SDN_PLUGIN="OpenShiftSDN"
+NETWORK_TOOLS_IMAGE="quay.io/openshift/origin-network-tools:latest"
+
+get_ovnk_leader_node () {
+  oc get cm -n ${OVN_NAMESPACE} ovn-kubernetes-master -o jsonpath='{.metadata.annotations.control-plane\.alpha\.kubernetes\.io\/leader}' | \
+    grep -Po '"holderIdentity":.*?[^\\]"' | awk -F':' '{print $2}' | sed 's/"//g'
+}
+
+get_ovnk_leader_pod () {
+  leader_host=$(get_ovnk_leader_node)
+  master_leader_pod="$(oc get pods -n $OVN_NAMESPACE --field-selector spec.nodeName=${leader_host} -l app=ovnkube-master -o=jsonpath='{.items..metadata.name}')"
+  echo "${master_leader_pod}"
+}
+
+get_network_plugin () {
+  oc get networks.config.openshift.io cluster -o 'jsonpath={.spec.networkType}'
+}
+
+get_ovndb_leader_pod () {
+  LEADER="not found"
+  case $1 in
+    n) DB="n"; DB_NAME="OVN_Northbound" ;;
+    s) DB="s"; DB_NAME="OVN_Southbound" ;;
+    *) echo "Unrecognized ovn db type ${1}, choose one of n, s"; exit 1 ;;
+  esac
+  for MASTER_POD in $(oc -n ${OVN_NAMESPACE} get pods -l app=ovnkube-master -o=jsonpath='{.items[*].metadata.name}'); do
+    RAFT_ROLE=$(oc exec -n ${OVN_NAMESPACE} "${MASTER_POD}" -c ${DB}bdb -- bash -c "ovn-appctl -t /var/run/ovn/ovn${DB}b_db.ctl cluster/status ${DB_NAME} 2>&1 | grep \"^Role\"")
+    if echo "${RAFT_ROLE}" | grep -q -i leader; then
+      LEADER=$MASTER_POD
+      break
+    fi
+  done
+  echo "${LEADER}"
+}
+
+ensure_output_dir () {
+  pushd $NETWORK_TOOLS_INITIAL_DIR > /dev/null || exit 1
+  [ ! -z "$1" ] && dir="$1" && mkdir -p "$dir"
+  [ -z "$1" ] && dir=$PWD
+  cd $dir && pwd
+  popd > /dev/null || exit 1
+}
+
+get_pod_node() {
+    local namespace="${1}"
+    local name="${2}"
+    oc get pod -n "$namespace" "$name" -o jsonpath={.spec.nodeName}
+}
+
+get_ns_pid() {
+  local namespace="${1}"
+  local pod="${2}"
+
+  node_name="$(get_pod_node "$namespace" "$pod")"
+  ns_pid=$(oc debug node/"$node_name" -- chroot /host bash -c \
+                 "runc state \$(crictl ps --pod \$(crictl pods --namespace $namespace --name $pod -q) -q) | jq .pid" 2> /dev/null)
+  echo "$ns_pid"
+}
+
+run_command_inside_pod_network_namespace_with_network_tools() {
+    SLEEP=""
+    if [[ "$1" == "--preserve-pod" ]]; then
+       SLEEP="; echo DONE; sleep 300"
+       shift
+    fi
+    local namespace="${1}"
+    local pod="${2}"
+    local command="${*:3}"
+
+    node_name="$(get_pod_node "$namespace" "$pod")"
+    ns_pid="$(get_ns_pid "$namespace" "$pod")"
+    if [ -z "$ns_pid" ]; then
+      exit 1
+    fi
+    if [ -z "$command" ]; then
+      echo "Running interactive shell for network-tools container.
+To run commands for pod netnamespace use
+
+nsenter -n -t $ns_pid <command>
+"
+      oc debug node/"$node_name" --image=$NETWORK_TOOLS_IMAGE
+    else
+      echo
+      echo "INFO: Running \"$command\" in the netns of pod $pod"
+      FULL_COMMAND="nsenter -n -t $ns_pid $command"
+      if [ ! -z "$SLEEP" ]; then
+        FULL_COMMAND="($FULL_COMMAND) $SLEEP"
+      fi
+
+      oc debug node/"$node_name" --image=$NETWORK_TOOLS_IMAGE -- bash -c "$FULL_COMMAND"
+    fi
+}
+

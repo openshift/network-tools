@@ -1,8 +1,9 @@
 #!/bin/bash
 
-set -eou pipefail
+set -eo pipefail
 
-source common
+source ./test-networking/common
+source ./utils
 
 check_ovn_ipsec_enabled () {
     echo "INFO: Ensuring ovn-ipsec is enabled"
@@ -26,12 +27,12 @@ do_ovn_ipsec_encryption_check () {
     DATE=$(date +"%Y-%m-%d")
     PCAP_FILENAME="ipsec-test-${DATE}.pcap"
 
-    if ! [ check_ovn_ipsec_enabled ]; then
-        exit 0 
+    if check_ovn_ipsec_enabled; then
+        exit 0
     fi
 
-    client_debug_pod="client-debug"-$(get_random_name) ||
-    server_debug_pod="server-debug"-$(get_random_name) ||
+    client_debug_pod="client-debug"-$(get_random_name)
+    server_debug_pod="server-debug"-$(get_random_name)
     sniffer_debug_pod=$(get_host_network_pod_name ${WORKER_NODES[1]})
 
     create_pod_on_node $client_debug_pod "${WORKER_NODES[0]}"
@@ -50,8 +51,8 @@ do_ovn_ipsec_encryption_check () {
     interface=${interface//$'\n'/}
     echo "INFO: Ethernet Interface name is: ${interface}"
 
-    tcpdump_expression="src $(kubectl get node "${WORKER_NODES[0]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}') \
-      and dst $(kubectl get node "${WORKER_NODES[1]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')"
+    tcpdump_expression="src $(oc get node "${WORKER_NODES[0]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}') \
+      and dst $(oc get node "${WORKER_NODES[1]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')"
     tcpdump_command="tcpdump -i ${interface} -vv -c 2 -w ${PCAP_FILENAME} ${tcpdump_expression}"
 
     echo "INFO: packet sniffing command is: ${tcpdump_command}"
@@ -85,35 +86,41 @@ do_ovn_ipsec_encryption_check () {
     oc delete pod $server_debug_pod $client_debug_pod $sniffer_debug_pod
 }
 
-help()
-{
-    # Display Help
-    echo
-    echo "This script checks that node2node traffic is encrypted when the ipsec feature is enabled an Openshift OVN-kubernetes cluster.
-By default this script spins up two pods (a client and a server) on two different nodes in the openshift-network-tools-* namespace. It also 
-spins up a host networked debug pod which runs a packet sniffer on all traffic passing between the nodes.
-
-Method: We run a ping from the <src-pod> to <dst-pod>. The debug pod running tcpdump captures the packet as it transverses the Geneve tunnel 
-across the nodes and ensures the pack is encrypted wth the ESP protocol.  It will also dump the .pcap capture for further analysis 
-to the debug pod reguardless of a passing or failing test. "
-
+description() {
+  echo "Check that node2node traffic is encrypted when the ipsec feature is enabled"
 }
 
+help()
+{
+    echo
+    echo "This script checks that node2node traffic is encrypted when the ipsec feature
+is enabled an Openshift OVN cluster.
+By default this script spins up two pods (a client and a server) on two different nodes
+in the debug namespace.
+It also spins up a host networked debug pod which runs a packet sniffer on all traffic passing between the nodes.
+
+Method: We run a ping from the <src-pod> to <dst-pod>. The debug pod running tcpdump captures the packet
+as it transverses the Geneve tunnel across the nodes and ensures the pack is encrypted wth the ESP protocol.
+It will also dump the .pcap capture for further analysis to the debug pod regardless of a passing or failing test.
+
+Usage: $USAGE
+
+Examples:
+  $USAGE
+
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
+"
+}
 
 main () {
+    ensure_ns
     #TODO A better way of ensuring we can contact the API Server, serivce accounts
-    BASE_COLLECTION_PATH="must-gather"
-    logdir="$BASE_COLLECTION_PATH/openshift-ovn-ipsec-connectivity"
-    mkdir -p $logdir
+    logdir=$(prepare_logdir openshift-ovn-ipsec-connectivity)
     do_ovn_ipsec_encryption_check |& tee $logdir/log
 }
 
-while getopts ":h" option; do
-    case $option in
-        h) # display Help
-            help
-            exit;;
-    esac
-done
-
-main
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

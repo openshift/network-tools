@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source common
+source ./test-networking/common
 
 do_network_tools_daemonset () {
     cat << EOF | oc apply -f -

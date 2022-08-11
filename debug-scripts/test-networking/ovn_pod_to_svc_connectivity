@@ -1,6 +1,8 @@
 #!/bin/bash
+set -eo pipefail
 
-source common
+source ./test-networking/common
+source ./utils
 
 # validate_input checks if the user provided input refers to existing pod/svc/node
 # and if not creates new ones.
@@ -25,10 +27,11 @@ do_pod_to_svc_connectivity_check () {
 
     validate_input
 
+    debug_pod_ip=$(get_pod_ip "$SRC_POD_NAMESPACE" "$debug_pod")
     debug_svc_ip=$(get_svc_ip "$DST_SVC_NAMESPACE" "$debug_svc")
 
     # rsh into the client pod and curl the svc
-    echo "INFO: IP of service: $debug_svc_ip"
+    echo "INFO: IP of client pod $debug_pod: $debug_pod_ip and IP of service: $debug_svc_ip"
     # TODO: Make this script smarter to determine the svc port number automatically in case an existing service is provided as input.
     curl_output=$(oc rsh -n $SRC_POD_NAMESPACE $debug_pod curl -sL -w "%{http_code}" "http://$debug_svc_ip:80" -o /dev/null --connect-timeout 3 --max-time 5)
     if [ $curl_output == "200" ]; then
@@ -48,52 +51,57 @@ do_pod_to_svc_connectivity_check () {
 
 }
 
+description() {
+  echo "Check pod2svc connectivity on an Openshift OVN cluster"
+}
+
 help()
 {
-    # Display Help
     echo
-    echo "This script checks pod2svc connectivity on an OVN cluster.
-By default this script spins up a pod (a client) and a service (a backing-server pod and a clusterIP:port svc) in the openshift-network-tools-* namespace.
-You can optionally supply the script with a pair of source and destination names. These can either be the source and destination node names on
-which the debug pods should be scheduled or they can be existing pod (format: <namespace/pod-name>) and service names (format: <namespace/svc-name>)
+    echo "This script checks pod2svc connectivity on an Openshift OVN cluster.
+By default this script spins up a pod (a client) and a service (a backing-server pod and a clusterIP:port svc)
+in debug namespace.
+You can optionally supply the script with a pair of source and destination names.
+These can either be the source and destination node names on which the debug pods should be scheduled or
+they can be existing pod (format: <namespace/pod-name>) and service names (format: <namespace/svc-name>)
 to run the connectivity test.
 
-NOTE: If existing pod/svc are passed as arguments, make sure curl utility is installed on the pod and svc has .spec.clusterIP:80 exposed for testing.
+NOTE: If existing pod/svc are passed as arguments, make sure curl utility is installed on the pod and
+svc has .spec.clusterIP:80 exposed for testing.
 
-Method: We run a curl from the <src-pod> to <dst-svc-ip>. If curl is not installed on the pod or if it fails, we run a netcat command from the
-network namespace of the <src-pod> to <dst-svc-ip> to check connectivity.
+Method: We run a curl from the <src-pod> to <dst-svc-ip>. If curl is not installed on the pod or if it fails,
+we run a netcat command from the network namespace of the <src-pod> to <dst-svc-ip> to check connectivity.
 
 If the connectivity test fails, it will run an ovnkube trace between the pod and service.
+
+Usage: $USAGE [src] [dst]
+
+Examples:
+  $USAGE
+  $USAGE <src-node-name> <dst-node-name>
+  $USAGE <src-pod-namespace>/<src-pod-name> <dst-pod-namespace>/<dst-pod-name>
+  $USAGE \"\" <dst-pod-namespace>/<dst-pod-name>
+  $USAGE <src-pod-namespace>/<src-pod-name>
+
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE <src-node-name> <dst-node-name>
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE <src-pod-namespace>/<src-pod-name> <dst-svc-namespace>/<dst-svc-name>
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE \\\"\\\" <dst-svc-namespace>/<dst-svc-name>
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE <src-pod-namespace>/<src-pod-name>
 "
-    echo
-    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> ovn_pod_to_svc <src-node-name> <dst-node-name>"
-    echo "or"
-    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- ovn_pod_to_svc <src-pod-namespace/src-pod-name> <dst-svc-namespace/dst-svc-name>"
-    echo "or"
-    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- ovn_pod_to_svc "" <dst-svc-namespace/dst-svc-name>"
-    echo "or"
-    echo "oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- ovn_pod_to_svc <src-pod-namespace/src-pod-name>"
-    echo "or"
-    echo "podman run <IMAGE_ID> ovn_pod_to_svc"
-    echo
 }
 
 main () {
-    BASE_COLLECTION_PATH="must-gather"
-    logdir="$BASE_COLLECTION_PATH/openshift-ovn-pod-to-svc-connectivity"
-    mkdir -p $logdir
+    ensure_ns
+    logdir=$(prepare_logdir openshift-ovn-pod-to-svc-connectivity)
     do_pod_to_svc_connectivity_check |& tee $logdir/log
 }
-
-while getopts ":h" option; do
-    case $option in
-        h) # display Help
-            help
-            exit;;
-    esac
-done
 
 src_name="${1}"
 dst_name="${2}"
 
-main
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

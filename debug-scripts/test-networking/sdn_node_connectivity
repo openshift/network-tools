@@ -1,6 +1,7 @@
 #!/bin/bash
-set -eu
-set -o pipefail
+set -eo pipefail
+
+source ./test-networking/common
 
 # Expects $1 to be in the format that oc get -o name outputs
 sdn_underlay_ip(){
@@ -42,27 +43,30 @@ do_sdn_node_connectivity_check() {
     done
 }
 
+description() {
+  echo "Check the node connectivity on an Openshift SDN cluster"
+}
+
 help()
 {
-    # Display Help
     echo
-    echo "This script checks the node connectivity on a SDN cluster.
+    echo "This script checks the node connectivity on an Openshift SDN cluster from a must-gather pod.
+ATTENTION! Can't be run locally
+
+Usage: oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
+
+Examples:
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
 "
 }
 
 main () {
-    BASE_COLLECTION_PATH="must-gather"
-    logdir="$BASE_COLLECTION_PATH/openshift-sdn-node-connectivity"
-    mkdir -p $logdir
+    logdir=$(prepare_logdir openshift-sdn-node-connectivity)
     do_sdn_node_connectivity_check |& tee $logdir/log
 }
 
-while getopts ":h" option; do
-    case $option in
-        h) # display Help
-            help
-            exit;;
-    esac
-done
-
-main
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

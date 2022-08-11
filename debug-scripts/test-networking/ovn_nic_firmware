@@ -1,6 +1,7 @@
 #!/bin/bash
+set -eo pipefail
 
-source common
+source ./test-networking/common
 
 
 do_nic_firmware_check () {
@@ -18,34 +19,31 @@ do_nic_firmware_check () {
     done
 }
 
-help()
-{
-    # Display Help
-    echo
-    echo "This script checks the firmware of OVN cluster nodes match.
+description() {
+  echo "Check the firmware of Openshift OVN cluster nodes match"
+}
 
+help() {
+    echo "
+This script checks the firmware of Openshift OVN cluster nodes match.
 If there is a NIC firmware mismatch, it will show the firmware version mismatch.
+
+Usage: $USAGE
+
+Examples:
+  $USAGE
+
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
 "
-    echo
-    echo "Usage: oc rsh -n <NETWORK-TOOLS-NAMESPACE> <network-tools-podname> ovn_nic_firmware"
-    echo "or"
-    echo "podman run <IMAGE_ID> ovn_nic_firmware"
-    echo
 }
 
 main () {
-    BASE_COLLECTION_PATH="must-gather"
-    logdir="$BASE_COLLECTION_PATH/openshift-ovn-nic-firmware"
-    mkdir -p $logdir
+    logdir=$(prepare_logdir openshift-ovn-nic-firmware)
     do_nic_firmware_check |& tee $logdir/log
 }
 
-while getopts ":h" option; do
-    case $option in
-        h) # display Help
-            help
-            exit;;
-    esac
-done
-
-main
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

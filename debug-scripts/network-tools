@@ -1,32 +1,65 @@
 #!/bin/bash
+set -eo pipefail
 
-source common
+# Kill Script Function
+trap exit TERM
+shopt -s expand_aliases
+alias exit_script='kill -s TERM $$'
 
-get_network_plugin () {
-    oc get networks.config.openshift.io cluster -o 'jsonpath={.spec.networkType}'
+function exit_with_help() { echo -e "${1}" && exit_script; }
+
+export NETWORK_TOOLS_INITIAL_DIR=$PWD
+scriptDir=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+cd "$scriptDir"
+
+source ./utils
+
+function main() {
+
+    # add [command_name]=[script path] here to make a new script a part of network-tools
+    declare -A -x command_table=(
+        # ./test-networking scripts
+        ["network-test"]="./test-networking/main"
+        ["ovn-ipsec-connectivity"]="./test-networking/ovn_ipsec_connectivity"
+        ["ovn-nic-firmware"]="./test-networking/ovn_nic_firmware"
+        ["ovn-pod-to-pod"]="./test-networking/ovn_pod_to_pod_connectivity"
+        ["ovn-pod-to-svc"]="./test-networking/ovn_pod_to_svc_connectivity"
+        ["sdn-cluster-info"]="./test-networking/sdn_cluster_and_node_info"
+        ["sdn-node-connectivity"]="./test-networking/sdn_node_connectivity"
+        ["sdn-pod-to-pod"]="./test-networking/sdn_pod_to_pod_connectivity"
+        ["sdn-pod-to-svc"]="./test-networking/sdn_pod_to_svc_connectivity"
+    )
+    if [[ -f "./local-scripts/local-scripts-map" ]]; then
+      source ./local-scripts/local-scripts-map
+      for i in "${!INTERNAL_COMMANDS[@]}"; do
+        command_table[$i]=${INTERNAL_COMMANDS[$i]}
+      done
+    fi
+
+    sorted=()
+    while IFS= read -rd '' key; do
+        sorted+=( "$key" )
+    done < <(printf '%s\0' "${!command_table[@]}" | sort -z)
+
+    msg="Usage: network-tools [command]
+
+Available commands are:\n"
+    for key in "${sorted[@]}"; do
+      local fn_name=${command_table[$key]}
+      description="$($fn_name "description")"
+      msg+="\t$key: $description\n"
+    done
+
+    if [[ $# -lt 1 ]]; then exit_with_help "$msg"; fi
+
+    if [ "$1" == "-h" ]; then exit_with_help "$msg"; fi
+
+    local command=${1}; shift
+    local fn_name=${command_table[$command]}
+
+    if [[ $fn_name == '' ]]; then exit_with_help "$msg"; fi
+    export USAGE="network-tools ${command}"
+    if $fn_name "$@"; then return 0; else echo "ERROR: Command returned non-zero exit code, check output or logs."; return 1; fi
 }
 
-network_plugin=$(get_network_plugin)
-echo "INFO: Cluster is using $network_plugin network plugin"
-
-# Create basic resources that can be reused for any test.
-# NOTE: Test specific resources should be created within the script.
-client="network-tools-debug-pod"-$(get_random_name); server="network-tools-debug-svc"-$(get_random_name)
-create_pod_on_node $client
-create_svc $server
-global_namespace=$(oc get pod $client -o jsonpath={.metadata.namespace})
-
-if [[ "$network_plugin" == "OVNKubernetes" ]] ; then
-    # run scripts
-    ovn_pod_to_pod_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
-    ovn_pod_to_svc_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
-    ovn_ipsec_connectivity
-elif [[ "$network_plugin" == "OpenShiftSDN" ]] ; then
-    # run scripts
-    sdn_pod_to_pod_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
-    sdn_pod_to_svc_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
-    sdn_cluster_and_node_info
-    sdn_node_connectivity
-else
-    echo "Unable to debug cluster networking. Only OpenShiftSDN and OVNKubernetes plugins are supported"
-fi
+main "$@"
