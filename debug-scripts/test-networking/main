@@ -50,7 +50,7 @@ function main() {
       ./test-networking/sdn_pod_to_pod_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
       ./test-networking/sdn_pod_to_svc_connectivity "$global_namespace"/"$client" "$global_namespace"/"$server"
       ./test-networking/sdn_cluster_and_node_info
-      if [ ! -z "$POD_NAME" ]; then
+      if [ -n "$POD_NAME" ]; then
 #        sdn_node_connectivity should not be run locally, $POD_NAME will be set when running with must-gather
         ./test-networking/sdn_node_connectivity
       fi
