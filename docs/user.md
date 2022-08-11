@@ -135,6 +135,57 @@ To copy a folder from network-tools container use `--source-dir '<container dir>
 # Available `network-tools` commands
 
 The following part of this file is auto-generated based on commands help.
+* `network-tools ovn-db-run-command`
+
+```
+This script will find a leader pod (sbdb leader if "sb" substring is found in the command, otherwise nbdb leader),
+and then run command inside ovnkube-master container for the found pod.
+
+WARNING! All arguments and flags should be passed in the exact order as they listed below.
+
+Usage: network-tools ovn-db-run-command [-p <pod_name>] [-it] [command]
+
+Options:
+  -it:
+      to get interactive shell from the leader container use -it flag and empty command.
+      WARNING! Don't use -it flag when running network-tools with must-gather.
+
+  -p pod_name:
+      use given pod name to run command. Finding a leader can take up to 2*(number of master pods) seconds,
+      if you don't want to wait this additional time, add "-p <db_leader_pod_name>" parameter.
+      DB leader pod name will be printed for every call without "-p" option, you can use it for the next calls.
+
+Examples:
+  network-tools ovn-db-run-command ovn-nbctl show
+  network-tools ovn-db-run-command -p ovnkube-master-s7gdz ovn-nbctl show
+  network-tools ovn-db-run-command ovn-sbctl dump-flows
+  network-tools ovn-db-run-command -it
+  network-tools ovn-db-run-command -p ovnkube-master-s7gdz -it
+
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-db-run-command ovn-nbctl show
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-db-run-command -p ovnkube-master-s7gdz ovn-nbctl show
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-db-run-command ovn-sbctl dump-flows
+
+```
+* `network-tools ovn-get`
+
+```
+This script can get different ovn-related information.
+
+Usage: network-tools ovn-get [object] [object options]
+
+Supported object:
+  leaders - prints ovnk master leader pod, nbdb and sbdb leader pods
+  dbs [output directory] - downloads nbdb and sbdb for every master pod. [output directory] is optional
+
+Examples:
+  network-tools ovn-get leaders
+  network-tools ovn-get dbs ./dbs
+
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get leaders
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get dbs /must-gather
+
+```
 * `network-tools ovn-metrics-list`
 
 ```
@@ -415,7 +466,7 @@ Examples:
 ```
 This script enables port forwarding to make pprof endpoints for ovnkube containers available on localhost.
 It checks all connections every 60 sec and stops if at least one fails (it can happen if some pod was deleted).
-It this case just run this script again and it will use new pods.
+In this case just run this script again and it will use new pods.
 The output will show local port for every pod, then you can find pprof web interface at localhost:<pod port>/debug/pprof,
 and collect e.g. cpu profile with
 

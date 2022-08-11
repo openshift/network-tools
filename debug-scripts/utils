@@ -40,7 +40,7 @@ get_ovndb_leader_pod () {
 
 ensure_output_dir () {
   pushd $NETWORK_TOOLS_INITIAL_DIR > /dev/null || exit 1
-  [ ! -z "$1" ] && dir="$1" && mkdir -p "$dir"
+  [ -n "$1" ] && dir="$1" && mkdir -p "$dir"
   [ -z "$1" ] && dir=$PWD
   cd $dir && pwd
   popd > /dev/null || exit 1
@@ -88,7 +88,7 @@ nsenter -n -t $ns_pid <command>
       echo
       echo "INFO: Running \"$command\" in the netns of pod $pod"
       FULL_COMMAND="nsenter -n -t $ns_pid $command"
-      if [ ! -z "$SLEEP" ]; then
+      if [ -n "$SLEEP" ]; then
         FULL_COMMAND="($FULL_COMMAND) $SLEEP"
       fi
 
