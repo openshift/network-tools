@@ -41,7 +41,7 @@ This is to maintain a minimum level of uniformity.
 where the scope reduces, e.g. if a script only works for ovn-k clusters, it should start with `ovn` and for openshift-sdn with `sdn`
   - Functions that are reused in more than one script should be added to the `utils`.
   - You can use `docs/script-template` as a template for a new script, make sure to update `description` and `help` functions
-  - Add command name <-> script path association in `network-tools` `command_table` or in `local-scripts/local-scripts-map`
+  - Add command name <-> script path association in `network-tools` `other_commands` or in `local-scripts/local-scripts-map`
     for local scripts.
   - Make sure your script can be run both locally and with `oc adm must-gather`
   - Make sure that `network-tools -h` and `network-tools <new script name> -h` shows your command and its help properly.

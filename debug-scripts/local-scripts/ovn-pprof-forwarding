@@ -1,0 +1,77 @@
+#!/bin/bash
+set -euo pipefail
+source ./utils
+
+function description() {
+  echo "Makes ovn pprof endpoints available on localhost"
+}
+
+function help() {
+  echo "This script enables port forwarding to make pprof endpoints for ovnkube containers available on localhost.
+It checks all connections every 60 sec and stops if at least one fails (it can happen if some pod was deleted).
+It this case just run this script again and it will use new pods.
+The output will show local port for every pod, then you can find pprof web interface at localhost:<pod port>/debug/pprof,
+and collect e.g. cpu profile with
+
+curl http://localhost:<pod port>/debug/pprof/profile?seconds=<duration>
+
+ATTENTION! This is local command, can't be used with must-gather.
+
+Usage: $USAGE
+
+Examples:
+  $USAGE
+"
+}
+
+MASTER_PORT=8100
+NODE_PORT=8200
+
+prepare () {
+  set -u pipefail
+
+  trap ctrl_c EXIT
+  IFS=" " read -r -a OVNKUBE_MASTER_PODS <<< "$(oc -n openshift-ovn-kubernetes get pods -l app=ovnkube-master -o=jsonpath='{.items[*].metadata.name}')"
+  for OVNKUBE_MASTER_POD in "${OVNKUBE_MASTER_PODS[@]}"; do
+      oc port-forward "${OVNKUBE_MASTER_POD}" ${MASTER_PORT}:29102 -n openshift-ovn-kubernetes > /dev/null &
+      PIDS+=($!)
+      echo $OVNKUBE_MASTER_POD pprof is on localhost:${MASTER_PORT}
+      ((MASTER_PORT+=1))
+  done
+  ((MASTER_PORT-=1))
+
+  IFS=" " read -r -a OVNKUBE_NODE_PODS <<< "$(oc -n openshift-ovn-kubernetes get pods -l app=ovnkube-node -o=jsonpath='{.items[*].metadata.name}')"
+  for OVNKUBE_NODE_POD in "${OVNKUBE_NODE_PODS[@]}"; do
+    oc port-forward "${OVNKUBE_NODE_POD}" ${NODE_PORT}:29103 -n openshift-ovn-kubernetes > /dev/null &
+      PIDS+=($!)
+      echo "$OVNKUBE_NODE_POD" pprof is on localhost:${NODE_PORT}
+      ((NODE_PORT+=1))
+  done
+  ((NODE_PORT-=1))
+  sleep 10
+  while true; do
+    for i in $(seq 8100 "$MASTER_PORT"); do
+    	nc -z 127.0.0.1 $i
+    done
+    for i in $(seq 8200 "$NODE_PORT"); do
+    	nc -z 127.0.0.1 $i
+    done
+    echo "connections are alive"
+    sleep 60
+  done
+}
+
+PIDS=()
+
+function ctrl_c() {
+    echo "Cleanup"
+    kill -KILL "${PIDS[@]}"
+}
+
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) prepare "$@" ;;
+esac
+
+wait "${PIDS[@]}"

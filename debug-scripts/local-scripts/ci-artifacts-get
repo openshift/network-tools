@@ -1,0 +1,46 @@
+#!/bin/bash
+set -euo pipefail
+source ./utils
+
+description() {
+  echo "Download ci prow job artifacts."
+}
+
+help () {
+  echo "Download ci prow job artifacts.
+
+ATTENTION! This is local command, can't be used with must-gather.
+ATTENTION! You need gsutil [https://cloud.google.com/storage/docs/gsutil_install] installed.
+
+Usage: $USAGE [-v] prowjob_url dest_path
+
+Examples:
+  $USAGE https://prow.ci.openshift.org/view/gs/origin-ci-test/pr-logs/pull/26359/pull-ci-openshift-origin-master-e2e-aws-single-node/1422822145540493312 ./
+"
+}
+
+main() {
+  if [[ "$1" == "-v" ]]; then
+    output_ops=""
+    shift
+  else
+    output_ops=" >/dev/null 2>&1"
+  fi
+  gsurl="gs:/"
+  IFS=$'/' read -a arr <<< "$1"
+  for substr in "${arr[@]:5}" ; do
+    gsurl+="/$substr"
+  done
+  output_dir=$(ensure_output_dir "${2:-}")
+  echo "Downloading to $output_dir"
+  echo "It can take a couple of minutes, please wait"
+  eval "gsutil -m cp -r $gsurl $output_dir $output_ops"
+  echo DONE!
+}
+
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac
+
