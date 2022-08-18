@@ -8,9 +8,7 @@ print_help() {
     ./debug-scripts/network-tools -h | tail -n +4 |
       while IFS= read -r line
       do
-        #echo new line
-        #echo "$line"
-        command=$(echo $line | cut -d ":" -f 1)
+        command=$(echo $line | cut -s -d ":" -f 1)
         if [ ! -z "$command" ]; then
             echo "* \`network-tools $command\`"
             echo

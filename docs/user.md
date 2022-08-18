@@ -135,6 +135,21 @@ To copy a folder from network-tools container use `--source-dir '<container dir>
 # Available `network-tools` commands
 
 The following part of this file is auto-generated based on commands help.
+* `network-tools ovn-metrics-list`
+
+```
+This script collects OVN networking metrics: master, node, and ovn.
+If output folder is not specified, local path will be used.
+
+Usage: network-tools ovn-metrics-list [output_folder]
+
+Examples:
+  network-tools ovn-metrics-list
+  network-tools ovn-metrics-list /some/path/metrics
+
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-metrics-list /must-gather
+
+```
 * `network-tools network-test`
 
 ```
@@ -152,30 +167,6 @@ Examples:
   network-tools network-test
 
   oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools network-test
-
-```
-* `network-tools ovn-db-run-locally`
-
-```
-Run ovn-kubernetes container with ovn db restored from a given file.
-You will get interactive pseudo-TTY /bin/bash running in created container,
-after you end bash session (use Ctrl+D) container will be removed.
-
-The script will wait max 10 seconds for ovn db to start,
-if ovndb status is not active you will get warning message.
-
-ATTENTION! For clustered dbs: db will be converted from cluster to standalone format
-as this is the only way to run db from gathered data. Db UUIDs will be preserved.
-
-ATTENTION! This is local command, can't be used with must-gather.
-
-Usage: network-tools ovn-db-run-locally raw_db_file ovn_db_type [-e {docker,podman}]
-  raw_db_file: db file from must-gather
-  ovn_db_type: n for 'n' for northbound db, 's' for southbound db
-  -e {docker,podman}: choose container engine to use. Default is docker
-
-Examples:
-  network-tools ovn-db-run-locally ./must-gather.local.8470413320584178988/quay-io-npinaeva-must-gather-sha256-48826a17ba08cf1ef1e27a7b85fdff459efb8fc5807c26cdb525eecbfb0ec6a3/network_logs/leader_nbdb n
 
 ```
 * `network-tools ovn-ipsec-connectivity`
@@ -379,5 +370,62 @@ Examples:
   oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-svc <src-pod-namespace>/<src-pod-name> <dst-svc-namespace>/<dst-svc-name>
   oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-svc \"\" <dst-svc-namespace>/<dst-svc-name>
   oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-svc <src-pod-namespace>/<src-pod-name>
+
+```
+* `network-tools ci-artifacts-get`
+
+```
+Download ci prow job artifacts.
+
+ATTENTION! This is local command, can't be used with must-gather.
+ATTENTION! You need gsutil [https://cloud.google.com/storage/docs/gsutil_install] installed.
+
+Usage: network-tools ci-artifacts-get [-v] prowjob_url dest_path
+
+Examples:
+  network-tools ci-artifacts-get https://prow.ci.openshift.org/view/gs/origin-ci-test/pr-logs/pull/26359/pull-ci-openshift-origin-master-e2e-aws-single-node/1422822145540493312 ./
+
+```
+* `network-tools ovn-db-run-locally`
+
+```
+Run ovn-kubernetes container with ovn db restored from a given file.
+You will get interactive pseudo-TTY /bin/bash running in created container,
+after you end bash session (use Ctrl+D) container will be removed.
+
+The script will wait max 10 seconds for ovn db to start,
+if ovndb status is not active you will get warning message.
+
+ATTENTION! For clustered dbs: db will be converted from cluster to standalone format
+as this is the only way to run db from gathered data. Db UUIDs will be preserved.
+
+ATTENTION! This is local command, can't be used with must-gather.
+
+Usage: network-tools ovn-db-run-locally raw_db_file ovn_db_type [-e {docker,podman}]
+  raw_db_file: db file from must-gather
+  ovn_db_type: n for 'n' for northbound db, 's' for southbound db
+  -e {docker,podman}: choose container engine to use. Default is docker
+
+Examples:
+  network-tools ovn-db-run-locally ./must-gather.local.8470413320584178988/quay-io-npinaeva-must-gather-sha256-48826a17ba08cf1ef1e27a7b85fdff459efb8fc5807c26cdb525eecbfb0ec6a3/network_logs/leader_nbdb n
+
+```
+* `network-tools ovn-pprof-forwarding`
+
+```
+This script enables port forwarding to make pprof endpoints for ovnkube containers available on localhost.
+It checks all connections every 60 sec and stops if at least one fails (it can happen if some pod was deleted).
+It this case just run this script again and it will use new pods.
+The output will show local port for every pod, then you can find pprof web interface at localhost:<pod port>/debug/pprof,
+and collect e.g. cpu profile with
+
+curl http://localhost:<pod port>/debug/pprof/profile?seconds=<duration>
+
+ATTENTION! This is local command, can't be used with must-gather.
+
+Usage: network-tools ovn-pprof-forwarding
+
+Examples:
+  network-tools ovn-pprof-forwarding
 
 ```
