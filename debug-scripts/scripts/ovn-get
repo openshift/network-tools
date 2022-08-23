@@ -1,0 +1,66 @@
+#!/bin/bash
+set -euo pipefail
+source ./utils
+
+description() {
+  echo "Get/download ovn information from the cluster."
+}
+
+help () {
+  echo "This script can get different ovn-related information.
+
+Usage: $USAGE [object] [object options]
+
+Supported object:
+  leaders - prints ovnk master leader pod, nbdb and sbdb leader pods
+  dbs [output directory] - downloads nbdb and sbdb for every master pod. [output directory] is optional
+
+Examples:
+  $USAGE leaders
+  $USAGE dbs ./dbs
+
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE leaders
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE dbs /must-gather
+"
+}
+
+copy_ovn_dbs() {
+  dir=$(ensure_output_dir "${1:-}")
+  echo "Output directory ${dir}"
+#  next command will return an error, but this is expected, ignore error
+  set +e
+  output=$(oc cp --retries=5 2>&1)
+  if [[ "$output" == *"unknown flag"* ]]; then
+    flags=""
+  else
+    flags="--retries=5"
+  fi
+#  no more errors are expected
+  set -e
+  for ovnmaster in $(oc get pods -n "${OVN_NAMESPACE}" -l app=ovnkube-master -o=custom-columns=NAME:.metadata.name --no-headers); do
+    mkdir -p "${dir}"/"${ovnmaster}"
+    oc cp $flags openshift-ovn-kubernetes/"${ovnmaster}":/etc/ovn/ovnnb_db.db -c nbdb "${dir}"/"${ovnmaster}"/nbdb.db
+    oc cp $flags openshift-ovn-kubernetes/"${ovnmaster}":/etc/ovn/ovnsb_db.db -c sbdb "${dir}"/"${ovnmaster}"/sbdb.db
+    echo "$ovnmaster" done
+  done
+}
+
+get_dbs_leader() {
+  echo "ovn-k master leader $(get_ovnk_leader_pod)"
+  echo "nbdb leader $(get_ovndb_leader_pod n)"
+  echo "sbdb leader $(get_ovndb_leader_pod s)"
+}
+
+main() {
+  case $1 in
+    leaders) get_dbs_leader ;;
+    dbs) copy_ovn_dbs "${@:2}" ;;
+    *) echo "Unknown object \"$1\", use -h to see supported objects"; exit 1 ;;
+  esac
+}
+
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

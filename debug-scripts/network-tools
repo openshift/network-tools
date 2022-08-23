@@ -50,6 +50,8 @@ function main() {
     # add [command_name]=[script path] here to make a new script a part of network-tools
     declare -A -x other_commands=(
         ["ovn-metrics-list"]="./scripts/ovn-metrics-list"
+        ["ovn-get"]="./scripts/ovn-get"
+        ["ovn-db-run-command"]="./scripts/ovn-db-run-command"
     )
 
     msg="Usage: network-tools [command]

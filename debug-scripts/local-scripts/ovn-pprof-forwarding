@@ -9,7 +9,7 @@ function description() {
 function help() {
   echo "This script enables port forwarding to make pprof endpoints for ovnkube containers available on localhost.
 It checks all connections every 60 sec and stops if at least one fails (it can happen if some pod was deleted).
-It this case just run this script again and it will use new pods.
+In this case just run this script again and it will use new pods.
 The output will show local port for every pod, then you can find pprof web interface at localhost:<pod port>/debug/pprof,
 and collect e.g. cpu profile with
 
