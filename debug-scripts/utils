@@ -68,17 +68,20 @@ run_command_inside_pod_network_namespace_with_network_tools() {
        SLEEP="; echo DONE; sleep 300"
        shift
     fi
+    with_bash=""
     left_braces=""
     right_braces=""
     if [[ "$1" == "--multiple-commands" || "$1" == "-mc" ]]; then
       shift
       left_braces="\""
       right_braces="\""
+      with_bash="bash -c "
     fi
     if [[ "$1" == "--no-substitution" || "$1" == "-ns" ]]; then
       shift
       left_braces="'"
       right_braces="'"
+      with_bash="bash -c "
     fi
     local namespace="${1}"
     local pod="${2}"
@@ -100,7 +103,7 @@ nsenter -n -t $ns_pid <command>
     else
       echo
       echo "INFO: Running $command in the netns of pod $pod"
-      FULL_COMMAND="nsenter -n -t $ns_pid /bin/bash -c $command"
+      FULL_COMMAND="nsenter -n -t $ns_pid $with_bash $command"
       if [ -n "$SLEEP" ]; then
         FULL_COMMAND="($FULL_COMMAND) $SLEEP"
       fi
@@ -108,3 +111,11 @@ nsenter -n -t $ns_pid <command>
     fi
 }
 
+get_full_path() {
+  if [[ "$1" = /* ]]; then
+    echo "$1"
+  else
+    relative_path=$1
+    readlink -e "$NETWORK_TOOLS_INITIAL_DIR/$relative_path" || { echo "Provided path $relative_path doesn't exist" 1>&2; exit 1; }
+  fi
+}
