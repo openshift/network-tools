@@ -2,8 +2,10 @@ network-tools
 =============
 
 `network-tools` is a collection of tools for debugging OpenShift cluster network issues.
-It will contain both debugging scripts (described in the next section) and useful tools that can be used
-by network engineers and openshift operators to debug and diagnose issues.
+It contains both debugging scripts (described in the next section) and useful tools to get
+information from the cluster. This repo is supposed to be used by network engineers and 
+support to debug and diagnose issues. Customers can also be advised to use commands from this 
+image to help get required information.
 
 ## How to use
 
@@ -40,3 +42,6 @@ are not copied to the image. But these scripts are available for local use (`net
 * Please see [contributor docs](https://github.com/openshift/network-tools/blob/master/docs/contributor.md) for more information regarding the scope of this repository and how to contribute.
 * Users can go to [user docs](https://github.com/openshift/network-tools/blob/master/docs/user.md) for information on how to leverage the tools and scripts shipped by this image.
 
+## Contacts
+
+For all questions reach out to [#forum-sdn](https://coreos.slack.com/archives/CDCP2LA9L) Slack channel, Openshift SDN team is maintaining this repo.
