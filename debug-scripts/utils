@@ -13,7 +13,9 @@ get_ovnk_leader_node () {
 
 get_ovnk_leader_pod () {
   leader_host=$(get_ovnk_leader_node)
-  master_leader_pod="$(oc get pods -n $OVN_NAMESPACE --field-selector spec.nodeName=${leader_host} -l app=ovnkube-master -o=jsonpath='{.items..metadata.name}')"
+  [ -z "$leader_host" ] && { echo "not found"; exit 1; }
+  master_leader_pod="$(oc get pods -n $OVN_NAMESPACE --field-selector spec.nodeName=${leader_host} -l app=ovnkube-master -o=jsonpath='{.items..metadata.name}' \
+  || { echo "Can't get master leader pod on the node ${leader_host}" 1>&2; echo "not found"; exit 1; })"
   echo "${master_leader_pod}"
 }
 
@@ -28,7 +30,8 @@ get_ovndb_leader_pod () {
     s) DB="s"; DB_NAME="OVN_Southbound" ;;
     *) echo "Unrecognized ovn db type ${1}, choose one of n, s"; exit 1 ;;
   esac
-  for MASTER_POD in $(oc -n ${OVN_NAMESPACE} get pods -l app=ovnkube-master -o=jsonpath='{.items[*].metadata.name}'); do
+  MASTER_PODS=$(oc -n ${OVN_NAMESPACE} get pods -l app=ovnkube-master -o=jsonpath='{.items[*].metadata.name}' || { echo "Can't get ovnkube-master pods" 1>&2; exit 1; })
+  for MASTER_POD in ${MASTER_PODS}; do
     RAFT_ROLE=$(oc exec -n ${OVN_NAMESPACE} "${MASTER_POD}" -c ${DB}bdb -- bash -c "ovn-appctl -t /var/run/ovn/ovn${DB}b_db.ctl cluster/status ${DB_NAME} 2>&1 | grep \"^Role\"")
     if echo "${RAFT_ROLE}" | grep -q -i leader; then
       LEADER=$MASTER_POD
@@ -49,17 +52,23 @@ ensure_output_dir () {
 get_pod_node() {
     local namespace="${1}"
     local name="${2}"
-    oc get pod -n "$namespace" "$name" -o jsonpath={.spec.nodeName}
+    oc get pod -n "$namespace" "$name" -o jsonpath={.spec.nodeName}  || { echo "ERROR: Can't get pod node" 1>&2; exit 1; }
 }
 
-get_ns_pid() {
+get_netns_pid() {
   local namespace="${1}"
   local pod="${2}"
 
   node_name="$(get_pod_node "$namespace" "$pod")"
   ns_pid=$(oc debug node/"$node_name" -- chroot /host bash -c \
-                 "runc state \$(crictl ps --pod \$(crictl pods --namespace $namespace --name $pod -q) -q) | jq .pid" 2> /dev/null)
+                 "runc state \$(crictl ps --pod \$(crictl pods --namespace $namespace --name $pod -q) -q) | jq .pid" || \
+                  { echo "ERROR: Can't get netns pid" 1>&2; exit 1; })
   echo "$ns_pid"
+}
+
+ctrl_c () {
+  echo "Ctrl+C was detected"
+  exit 0
 }
 
 run_command_inside_pod_network_namespace_with_network_tools() {
@@ -89,10 +98,13 @@ run_command_inside_pod_network_namespace_with_network_tools() {
     local command="$left_braces${*:3}$right_braces"
 
     node_name="$(get_pod_node "$namespace" "$pod")"
-    ns_pid="$(get_ns_pid "$namespace" "$pod")"
+    ns_pid="$(get_netns_pid "$namespace" "$pod")"
     if [ -z "$ns_pid" ]; then
+      echo "ERROR: Failed to find netns pid"
       exit 1
     fi
+
+    trap ctrl_c SIGINT
     if [ -z "$command" ]; then
       echo "Running interactive shell for network-tools container.
 To run commands for pod netnamespace use

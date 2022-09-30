@@ -55,7 +55,7 @@ main() {
     final_command="oc exec -tic ovnkube-master -n $OVN_NAMESPACE $pod -- /bin/bash"
   else
     command="bash -c \"${*:1}\""
-    if [ ! -z "${POD_NAME:-}" ]; then
+    if [ -n "${POD_NAME:-}" ]; then
 #     save output when run with must-gather
       command+="|& tee /must-gather/output"
     fi

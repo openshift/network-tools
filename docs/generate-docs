@@ -9,7 +9,7 @@ print_help() {
       while IFS= read -r line
       do
         command=$(echo $line | cut -s -d ":" -f 1)
-        if [ ! -z "$command" ]; then
+        if [ -n "$command" ]; then
             echo "* \`network-tools $command\`"
             echo
             echo "\`\`\`"
