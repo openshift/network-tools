@@ -13,19 +13,25 @@ Usage: $USAGE [object] [object options]
 
 Supported object:
   leaders - prints ovnk master leader pod, nbdb and sbdb leader pods
-  dbs [output directory] - downloads nbdb and sbdb for every master pod. [output directory] is optional
+  dbs [output directory] - downloads nbdb and sbdb for every master pod. [output directory] is optional for local usage
+      and should be omitted for must-gather
 
 Examples:
   $USAGE leaders
   $USAGE dbs ./dbs
 
   oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE leaders
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE dbs /must-gather
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE dbs
 "
 }
 
 copy_ovn_dbs() {
-  dir=$(ensure_output_dir "${1:-}")
+  if [ -n "${POD_NAME:-}" ]; then
+#    script is run with must-gather
+    dir="/must-gather"
+  else
+    dir=$(ensure_output_dir "${1:-}")
+  fi
   echo "Output directory ${dir}"
 #  next command will return an error, but this is expected, ignore error
   set +e
