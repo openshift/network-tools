@@ -23,4 +23,7 @@ approvers:
   - tssurya
   - astoycos
   - npinaeva
-component: "Networking"
+
+# Bugzilla info; "ovn-kubernetes" is wrong but there is no "generic networking" subcomponent
+component: Networking
+subcomponent: ovn-kubernetes
