@@ -7,8 +7,13 @@ SDN_PLUGIN="OpenShiftSDN"
 NETWORK_TOOLS_IMAGE="quay.io/openshift/origin-network-tools:latest"
 
 get_ovnk_leader_node () {
-  oc get cm -n ${OVN_NAMESPACE} ovn-kubernetes-master -o jsonpath='{.metadata.annotations.control-plane\.alpha\.kubernetes\.io\/leader}' | \
-    grep -Po '"holderIdentity":.*?[^\\]"' | awk -F':' '{print $2}' | sed 's/"//g'
+  n=$(oc -n ${OVN_NAMESPACE} get lease ovn-kubernetes-master -o jsonpath='{.spec.holderIdentity}' 2> /dev/null)
+  if [ -z "$n" ]; then
+    oc get cm -n ${OVN_NAMESPACE} ovn-kubernetes-master -o jsonpath='{.metadata.annotations.control-plane\.alpha\.kubernetes\.io\/leader}' | \
+      grep -Po '"holderIdentity":.*?[^\\]"' | awk -F':' '{print $2}' | sed 's/"//g'
+  else
+    echo "$n"
+  fi
 }
 
 get_ovnk_leader_pod () {
