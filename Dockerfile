@@ -3,7 +3,7 @@ WORKDIR /go/src/github.com/openshift/network-tools
 COPY . .
 
 # needed for ovnkube-trace
-FROM registry.ci.openshift.org/ocp/4.13:ovn-kubernetes AS ovnkube-trace
+FROM registry.ci.openshift.org/ocp/4.13:ovn-kubernetes-rhel-9 AS ovnkube-trace
 
 # tools (openshift-tools) is based off cli
 FROM registry.ci.openshift.org/ocp/4.13:tools
