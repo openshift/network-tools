@@ -176,14 +176,44 @@ Usage: network-tools ovn-get [object] [object options]
 
 Supported object:
   leaders - prints ovnk master leader pod, nbdb and sbdb leader pods
-  dbs [output directory] - downloads nbdb and sbdb for every master pod. [output directory] is optional
+  dbs [output directory] - downloads nbdb and sbdb for every master pod. [output directory] is optional for local usage
+      and should be omitted for must-gather
 
 Examples:
   network-tools ovn-get leaders
   network-tools ovn-get dbs ./dbs
 
   oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get leaders
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get dbs /must-gather
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get dbs
+
+```
+* `network-tools ovn-metrics-dump`
+
+```
+This script collects user specified prometheus metrics and converts the output
+to openmetrics format so it can be imported into another prometheus instance with
+'promtool tsdb create-blocks-from openmetrics <openmetrics file>'
+See https://access.redhat.com/solutions/5482971 to install prometheus.
+
+Usage: network-tools ovn-metrics-dump --inputfile=<filename> [options]
+
+Options:
+  -i|--inputfile    = a text file with metric names; only required parameter
+  -o|--outputfile   = destination file for the promql query results
+  -t|--time_parameters= a time range like [5m] or [1d] or combine with offset: -t='[10m] offset 1d'. 
+     See https://prometheus.io/docs/prometheus/latest/querying/basics/#time-durations
+  -v|--verbose      = see the ressults of the promql queries and the openmetrics conversion on the console
+  -u|--uncompressed = the resulting openmetrics file is not compressed with gzip; default is to compress.  
+  -c|--convert      = convert metrics dump to openmetrics format for import into local prometheus DB; default is not to.  
+
+ Examples: network-tools ovn-metrics-dump -i=~/mymetrics.txt -t=[10m] 
+           network-tools ovn-metrics-dump --inputfile=~/mymetrics.txt --outputfile=~/mymetrics.output --verbose
+           network-tools ovn-metrics-dump --inputfile=~/mymetrics.txt --o=~/mymetrics.output -t='[5m] offset 1d'
+
+ To convert an existing metrics dump to openmetrics format, simply use the metrics dump as the input file.  
+ The script will detect the metrics dump and automatically convert it to openmentrics format
+
+ Example: network-tools ovn-metrics-dump -i =~/mydumpedmetrics.out 
 
 ```
 * `network-tools ovn-metrics-list`
@@ -244,7 +274,7 @@ WARNING! Don't forget to set timeout for long-running commands with must-gather,
 if you just Ctrl+C it won't cleanup must-gather resources.
 Must-gather has a default 10 min timeout for every command, if you need to change it use --timeout option.
 
-Usage: network-tools pod-run-netns-command [-it] [-pp] [-mc] [-ns] namespace pod [command]
+Usage: network-tools pod-run-netns-command [-it] [--preserve-pod, -pp] [--multiple-commands, -mc] [--no-substitution, -ns] namespace pod [command]
 
 Examples:
   network-tools pod-run-netns-command default hello-pod nc -z -v <ip> <port>
@@ -262,7 +292,7 @@ Examples:
         network-tools pod-run-netns-command -ns default hello-pod 'i=0; ip a; i=$(( $i + 1 )); echo $i'
 
   If the command you are running generates a file instead of printing to stdout, you can download that file by preserving debug pod
-      [terminal1] network-tools pod-run-netns-command --preserve-pod default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
+      [terminal1] network-tools pod-run-netns-command -pp default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
       # wait for DONE printed, note "Starting pod/PODNAME" log)
       [terminal2] oc cp PODNAME:/tmp/tcpdump.pcap <local_path>
       # you can Ctrl+C terminal1 when you don't need debug pod anymore)
@@ -289,7 +319,7 @@ Examples:
 
   If the command you are running generates a file instead of output, you can download that file by preserving debug pod
       [terminal1] oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest --  \
-          network-tools pod-run-netns-command --preserve-pod default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
+          network-tools pod-run-netns-command -pp default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
 
       # wait for
       # [must-gather-fj4hp] POD 2022-07-29T15:23:03.977676789Z DONE
