@@ -53,6 +53,7 @@ function main() {
         ["ovn-get"]="./scripts/ovn-get"
         ["ovn-db-run-command"]="./scripts/ovn-db-run-command"
         ["pod-run-netns-command"]="./scripts/pod-run-netns-command"
+        ["ovn-metrics-dump"]="./scripts/ovn-metrics-dump"
     )
 
     msg="Usage: network-tools [command]

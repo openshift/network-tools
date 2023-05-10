@@ -1,0 +1,216 @@
+#!/bin/bash
+set -euo pipefail 
+description() {
+  echo -e "Collect prometheus metrics spcified in input file"
+}
+
+help () {
+  USAGE="${USAGE:-./ovn-metrics-dump}"
+  echo -e "This script collects user specified prometheus metrics and converts the output\n\
+to openmetrics format so it can be imported into another prometheus instance with\n\
+'promtool tsdb create-blocks-from openmetrics <openmetrics file>'\n\
+See https://access.redhat.com/solutions/5482971 to install prometheus.
+
+Usage: $USAGE --inputfile=<filename> [options]
+
+Options:
+  -i|--inputfile    = a text file with metric names; only required parameter
+  -o|--outputfile   = destination file for the promql query results
+  -t|--time_parameters= a time range like [5m] or [1d] or combine with offset: -t='[10m] offset 1d'. 
+     See https://prometheus.io/docs/prometheus/latest/querying/basics/#time-durations
+  -v|--verbose      = see the ressults of the promql queries and the openmetrics conversion on the console
+  -u|--uncompressed = the resulting openmetrics file is not compressed with gzip; default is to compress.  
+  -c|--convert      = convert metrics dump to openmetrics format for import into local prometheus DB; default is not to.  
+
+ Examples: $USAGE -i=~/mymetrics.txt -t=[10m] 
+           $USAGE --inputfile=~/mymetrics.txt --outputfile=~/mymetrics.output --verbose
+           $USAGE --inputfile=~/mymetrics.txt --o=~/mymetrics.output -t='[5m] offset 1d'
+
+ To convert an existing metrics dump to openmetrics format, simply use the metrics dump as the input file.  
+ The script will detect the metrics dump and automatically convert it to openmentrics format
+
+ Example: $USAGE -i=~/mydumpedmetrics.out 
+"
+}
+
+function promql_extract() {
+  local metric=$1
+  #get metric data an show output w/tee
+  if echo $metric | egrep -q "\[.*[hmsdw]\]"; then 
+    echo "  $metric already has a time parameter"
+    result=$(oc exec prometheus-k8s-0 -n openshift-monitoring --  promtool query instant  http://localhost:9090 $metric)
+  else
+    result=$(oc exec prometheus-k8s-0 -n openshift-monitoring --  promtool query instant  http://localhost:9090 $metric$time_parameters)
+  fi
+
+  if [ ${#result} -le 0 ]; then echo -e "No metric data for $metric\n" >&2
+  elif [ $verbose == true ]; then echo -e "$result\n" | tee -a $outputfile
+  else echo -e "$result\n" >>$outputfile
+  fi
+}
+
+function write_metadata() {
+  metric_name=$1 metric_lookup_name=""
+  metric_HELP="" metric_TYPE="" type=""
+
+  #check for a histogram TYPE and strip off the last word for api lookup
+  if ( echo $metric_name| grep -E -q '_bucket|_count|_sum' ); then
+    metric_lookup_name=${metric_name%_*} 
+  else
+    metric_lookup_name=$metric_name
+  fi
+
+  if [ -f $outputfile.metadata ]; then
+    #see if we already have metadata for this metric
+    read -r metric_TYPE metric_HELP <<< $(jq -r --arg metric_lookup_name "$metric_lookup_name" \
+      '.data | to_entries[] | select(.key==$metric_lookup_name) | "\(.value[].type) \"\(.value[].help)\""' \
+      "$outputfile.metadata")
+  else
+    echo "$outputfile.metadata does not exist; doing metadata look ups" >&2
+  fi
+
+  if ( [ ! -z "$metric_HELP" ] ); then  #metadata found
+    if $verbose; then echo "metadata cached for $metric_name" >&2; fi
+  else
+    #call api to get metadata
+    api_counter=$(( api_counter + 1 ))
+    if $verbose; then echo "Calling api for $metric_name metadata" >&2; fi
+    result=$(oc exec  prometheus-k8s-0 -n openshift-monitoring -- curl -s http://localhost:9090/api/v1/metadata?metric=$metric_lookup_name)
+   
+    #still get data even when lookup is not successful so judge by length
+    if [ ${#result} -gt 30 ]; then 
+      echo -e "$result" >>"$outputfile.metadata" #cache the result
+	read metric_TYPE metric_HELP <<< $(echo $result | jq -r '.data | to_entries[] | "\(.value[].type) \"\(.value[].help)\""')
+    else
+	#cache this metric so we don't keep looking it up
+	echo "No metadata for $metric_name" >&2
+	if ( echo $metric_name | grep -q count); then type=counter; else type=gauge; fi
+      echo "{\"status\":\"failure\",\"data\":{\"$metric_lookup_name\":[{\"type\":\"$type\",\"help\":\"not-found\"}]}}" >>"$outputfile.metadata"
+	metric_TYPE="$type" metric_HELP="not-found"
+    fi
+  fi
+
+  echo -e "# HELP $metric_name $metric_HELP\n# TYPE $metric_name $metric_TYPE" 
+}
+
+convert-to-openmetrics() {
+  echo -e "\n"---Converting $outputfile to openmetrics format in "$outputfile.openmetrics" >&2
+  local metric_name=""
+  local metric_with_labels=""
+
+  while read -r line
+  do 
+    IFS=$' \t\n' #default
+    local datapoint=""
+    #protect against blank lines in the output from promql queries
+    if [ ${#line} -le 1 ]; then continue; fi 
+    #Every line from the promql query output with a datapont will match the following grep:
+    echo $line | grep -q "]$" && datapoint=$(echo $line | awk -F' ' '{ print $(NF-1) " " $NF }' | sed "s/@\[//; s/\]//")
+    #In a time series, only one line will match the following grep (=>)
+    #If not a time series then every line will match it.  
+    #A match means we have a metric and need to look up the metric_TYPE and the metric_HELP 
+    #for this metric name from the metadata dump file.  
+    if ( echo $line | grep -q '=>' ); then 
+      metric_name=$(echo $line |  awk -F{ '{ print $1 }') 
+      metric_with_labels=$(echo "$line" | awk -F'=>' '{ print $1 }' | sed 's/ //g') 
+      write_metadata $metric_name
+    fi 
+   
+    #write the output, in openmetrics format, to stdout 
+    if [ -z "${datapoint:-}" ]; then continue; fi
+    if [ "$verbose" == true ]; then echo $metric_with_labels $datapoint >&2; fi
+    echo $metric_with_labels $datapoint 
+
+  done < $outputfile >> "$outputfile.openmetrics" 
+  echo '# EOF' >> "$outputfile.openmetrics"
+}
+
+main() {
+  local metric=""
+
+  if grep -o -q -e '^[a-z].*{.*} =>' $inputfile; then
+    echo -e "Input file $inputfile is a metrics dump. About to convert to openmetrics format.\nPress any key to continue..."
+    read -n 1
+    convert-to-openmetrics $outputfile
+  else
+    oldIFS=$IFS
+    IFS=$'\n' #split on newline only
+    for metric in $(cat $inputfile | grep -v '^#'); do
+      echo "---Processing $metric" >&2
+      promql_extract $metric 
+    done
+  
+    if $convert; then convert-to-openmetrics $outputfile; fi
+    if ! $uncompressed; then
+       echo -e "\n---Creating archive $outputfile.openmetrics.tgz"
+       if $convert; then 
+         tar cfz "$outputfile.openmetrics.tgz" "$outputfile.openmetrics"
+       else
+         tar cfz "$outputfile.tgz" "$outputfile"
+       fi 
+    fi
+  fi
+}
+
+#global variables
+inputfile=""
+outputfile="/tmp/ovn-metrics-dump.out" 
+time_parameters=""
+verbose=false
+metadata=false
+uncompressed=false
+convert=false
+api_counter=0
+
+if [ "$#" -eq 0 ]; then help;
+else
+  for i in "$@"; do
+    case $i in
+      description) description
+        exit 0
+        ;;
+      -h|--help) help 
+        exit 0
+        ;;
+      -i=*|--inputfile=*)
+        inputfile="${i#*=}"
+        shift # past argument=value
+        ;;
+      -o=*|--outputfile=*)
+        outputfile="${i#*=}"
+        shift # past argument=value
+        ;;
+      -t=*|--time_parmeters=*)
+        time_parameters="${i#*=}"
+        shift # past argument=value
+        ;;
+      -v|--verbose)
+        verbose=true
+        shift # past argument=value
+        ;;
+      -u|--uncompressed)
+        uncompressed=true
+        shift # past argument=value
+        ;;
+      -c|--convert)
+        convert=true
+        shift # past argument=value
+        ;;
+      *)
+        echo "Unknown option $i"
+        exit 1
+        ;;
+    esac
+  done
+
+  if [[ -z "${inputfile:-}" ]]; then echo "No --inputfile specified"; exit 1; fi
+  if [ ! -f $inputfile ]; then echo "--inputfile $inputfile does not exist"; exit 1; fi
+  #if inputfile=outputfile (default) then we're converting an existing dump
+  if [[ -f $outputfile && ($inputfile != $outputfile) ]]; then rm $outputfile; fi
+  if [ -f "$outputfile.openmetrics" ]; then rm "$outputfile.openmetrics"; fi
+  if [ -f "$outputfile.openmetrics.tgz" ]; then rm "$outputfile.openmetrics.tgz"; fi
+  if [ -f "$outputfile.tgz" ]; then rm "$outputfile.tgz"; fi
+  main $inputfile $outputfile $time_parameters $verbose
+  echo -e "\napi_count for metadata calls: $api_counter"
+fi
+
