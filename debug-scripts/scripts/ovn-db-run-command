@@ -4,37 +4,40 @@ set -euo pipefail
 source ./utils
 
 description() {
-  echo "Run ovndb command like \"ovn-nbctl\" inside a leader pod"
+  echo "Run ovndb command like \"ovn-nbctl\" inside a pod"
 }
 
 help () {
-  echo "This script will find a leader pod (sbdb leader if \"sb\" substring is found in the command, otherwise nbdb leader),
-and then run command inside ovnkube-master container for the found pod.
+  echo "In non-ovn-ic (legacy) clusters, this script will find a leader pod (sbdb leader
+if \"sb\" substring is found in the command, otherwise nbdb leader), and then run command
+inside ovnkube-master container for the found pod.
 
 WARNING! All arguments and flags should be passed in the exact order as they listed below.
+WARNING! With ovn-ic, the -p flag should be provided since all node pods have a db.
 
 Usage: $USAGE [-p <pod_name>] [-it] [command]
 
 Options:
   -it:
-      to get interactive shell from the leader container use -it flag and empty command.
+      to get interactive shell from the selected container use -it flag and empty command.
       WARNING! Don't use -it flag when running network-tools with must-gather.
 
   -p pod_name:
-      use given pod name to run command. Finding a leader can take up to 2*(number of master pods) seconds,
-      if you don't want to wait this additional time, add \"-p <db_leader_pod_name>\" parameter.
-      DB leader pod name will be printed for every call without \"-p\" option, you can use it for the next calls.
+      use given pod name to run command. In non-ovn-ic custers, finding a leader can take up to
+      2*(number of master pods) seconds, if you don't want to wait this additional time, add
+      \"-p <db_selected_pod_name>\" parameter.
+      Selected pod name will be printed for every call without \"-p\" option, you can use it for the next calls.
+
 
 Examples:
   $USAGE ovn-nbctl show
-  $USAGE -p ovnkube-master-s7gdz ovn-nbctl show
+  $USAGE -p ovnkube-node-cdv6q ovn-nbctl show
   $USAGE ovn-sbctl dump-flows
   $USAGE -it
-  $USAGE -p ovnkube-master-s7gdz -it
+  $USAGE -p ovnkube-node-twkpx -it
 
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE ovn-nbctl show
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE -p ovnkube-master-s7gdz ovn-nbctl show
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE ovn-sbctl dump-flows
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE -p ovnkube-node-cdv6q ovn-nbctl show
+  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE -p ovnkube-node-twkpx ovn-sbctl dump-flows
 "
 }
 
@@ -43,23 +46,30 @@ main() {
     pod="$2"
     shift 2
   else
-    if [[ "$1" == *"sb"* ]]; then
-      DB="s"
+    if [ $(get_ovn_mode) == "ovn-ic" ]; then
+      pod=$(oc -n ${OVN_NAMESPACE} get pods -l app=ovnkube-node -o=jsonpath='{.items[0].metadata.name}')
+      echo "Pod not provided while using ovn-ic cluster: Randomly using pod $pod"
     else
-      DB="n"
+      # Legacy mode suport: pod parameter is not necessary on 4.13 and older releases
+      if [[ "$1" == *"sb"* ]]; then
+        DB="s"
+      else
+        DB="n"
+      fi
+      pod=$(get_ovndb_leader_pod $DB)
+      echo "Leader pod is $pod"
     fi
-    pod=$(get_ovndb_leader_pod $DB)
-    echo "Leader pod is $pod"
   fi
+  OVN_CONTAINER="$(get_ovn_controller_container_name)"
   if [[ "$1" == "-it" ]]; then
-    final_command="oc exec -tic ovnkube-master -n $OVN_NAMESPACE $pod -- /bin/bash"
+    final_command="oc exec -tic $OVN_CONTAINER -n $OVN_NAMESPACE $pod -- /bin/bash"
   else
     command="bash -c \"${*:1}\""
     if [ -n "${POD_NAME:-}" ]; then
 #     save output when run with must-gather
       command+="|& tee /must-gather/output"
     fi
-    final_command="oc exec -c ovnkube-master -n $OVN_NAMESPACE $pod -- $command"
+    final_command="oc exec -c $OVN_CONTAINER -n $OVN_NAMESPACE $pod -- $command"
   fi
   eval "$final_command"
 }
