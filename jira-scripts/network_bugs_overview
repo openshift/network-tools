@@ -1,0 +1,788 @@
+#!/usr/bin/env python3
+import argparse
+import collections
+from datetime import date, datetime, timedelta
+from dateutil.parser import parse
+import sys
+from tabulate import tabulate
+import time
+
+import bugzilla
+from dateutil import parser
+from jira.client import JIRA
+from jira_secrets import secrets
+import re
+
+class colors:
+    HEADER = "\033[93m"
+    END = "\033[0m"
+    BOLD = "\033[1m"
+
+
+RH_DEVELOPERS = (
+    "bpickard",
+    # "bnemec",
+    # "dougsland",
+    "ffernand",
+    "jcaamano",
+    "jluhrsen",
+    "jtanenba",
+    # "mcambria",
+    "mkennell",
+    "npinaeva",
+    "pdiak",
+    "pepalani",
+    "rravaiol",
+    "sseethar",
+)
+
+ALIASES_TO_USERNAMES = {
+    # alias:  username
+    "surya": "sseethar",
+}
+
+# arbitrary numbers to weight severity, 10 is max and 1 is low
+SEVERITY_WEIGHTS = {
+    "urgent": 10,  # bugzilla
+    "high": 5,
+    "medium": 3,
+    "low": 1,
+    "unspecified": 1,
+    "critical": 10,  # jira
+    "important": 5,
+    "moderate": 3,
+    "informational": 1,
+    None: 1,
+}
+
+# arbitrary numbers to weight priority, 100 is max and 1 is low
+PRIORITY_WEIGHTS = {
+    "urgent": 100,  # bugzilla
+    "high": 30,
+    "medium": 10,
+    "low": 5,
+    "unspecified": 1,
+    "blocker": 10000,  # jira
+    "critical": 1000,
+    "major": 100,
+    "normal": 10,
+    "minor": 1,
+    "unprioritized": 1,
+    "undefined": 1,
+}
+
+# arbitrary, a bug is considered "stale" if it has been in the NEW status for more than 30 days
+STALE_THRESHOLD = 30
+
+BZ_KEY = "bugzilla"
+JIRA_KEY = "jira"
+BZ_BUGS = "bugzilla"
+JIRA_BUGS = "jira_bugs"
+JIRA_ESCALATIONS = "jira_escalations"
+
+GENERIC_COMPONENT = "networking"
+SDN_COMPONENT = "networking / openshift-sdn"
+OVN_COMPONENT = "networking / ovn-kubernetes"
+INGRESS_FW_COMPONENT = "networking / ingress-node-firewall"
+METAL_LB_COMPONENT = "networking / metal LB"
+CNO_COMPONENT = "networking / cluster-network-operator"
+CNCC_COMPONENT = "networking / cloud-network-config-controller"
+ESCALATIONS_COMPONENT = "networking/sdn"
+TEAM_COMPONENTS = (GENERIC_COMPONENT, SDN_COMPONENT, OVN_COMPONENT, CNCC_COMPONENT,
+                   INGRESS_FW_COMPONENT, METAL_LB_COMPONENT, CNO_COMPONENT)
+ASSIGN_WINDOW_DAYS = 21  # 3 weeks in a sprint
+
+
+def init_developers_dict():
+    developers = dict(
+        [
+            (
+                f"{d}@redhat.com",
+                {
+                    "points": 0,
+                    "number_of_bugs": 0,
+                    "number_of_escalations": 0,
+                    "number_of_ovnk_bugs": 0,
+                    "number_of_osdn_bugs": 0,
+                    "number_of_other_bugs": 0,
+                    "bugs_in_new": 0,
+                    "bugs_in_assigned": 0,
+                    "bugs_in_post": 0,
+                    "recently_assigned": 0,
+                    "bugs_urls": [],
+                },
+            )
+            for d in RH_DEVELOPERS
+        ]
+    )
+    return developers
+
+
+def retrieve_unassigned_jira_bugs():
+    clients = init_clients(bz=False, jira_=True)
+    query = '(filter in ("SDN BZ filter", "SDN OCPBUGS") OR project = RHOCPPRIO AND component in ("networking/sdn") ' \
+            'OR project = SDN AND issuetype = Bug) AND filter in (Unresolved) AND ((project = OCPBUGSM OR project = ' \
+            'OCPBUGS) AND assignee = "bbennett@redhat.com" OR project = RHOCPPRIO AND assignee in (' \
+            '"anbhat@redhat.com", "vpickard@redhat.com") OR assignee is EMPTY) ORDER BY Rank DESC'
+    bugs = run_jira_query(clients[JIRA_KEY], query)
+    return bugs
+
+
+def retrieve_jira_bugs_for_given_dev(dev_name):
+    clients = init_clients(bz=False, jira_=True)
+    query = init_jira_query_for_one_assignee(dev_name)
+    bugs = run_jira_query(clients[JIRA_KEY], query)
+    return bugs
+
+
+def count_recently_assigned_bugs(dev_name):
+    bugs = retrieve_jira_bugs_for_given_dev(dev_name)
+    return sum(was_jira_bug_recently_assigned(b) for b in bugs)
+
+
+def init_queries(clients, bz=True, jira_bugs=True, jira_escalations=False):
+    query_dict = {}
+    if bz and clients.get(BZ_KEY):
+        query = init_bz_query(clients[BZ_KEY])
+        query_dict[BZ_BUGS] = {"query": query}
+
+    if jira_bugs:
+        query = init_jira_query_for_bugs()
+        query_dict[JIRA_BUGS] = {"query": query}
+
+    if jira_escalations:
+        query = init_jira_query_for_escalations()
+        query_dict[JIRA_ESCALATIONS] = {"query": query}
+
+    return query_dict
+
+
+def init_bz():
+    URL = "bugzilla.redhat.com"
+    return bugzilla.Bugzilla(URL)
+
+
+def init_jira():
+    return JIRA("https://issues.redhat.com", token_auth=secrets["token"], kerberos=True)
+
+
+def init_clients(bz=True, jira_=True):
+    clients = {
+        BZ_KEY: init_bz() if bz else None,
+        JIRA_KEY: init_jira() if jira_ else None,
+    }
+    return clients
+
+
+def init_bz_query(bzapi):
+    query = bzapi.build_query(
+        product="OpenShift Container Platform",
+        component="Networking",
+        include_fields=[
+            "id",
+            "priority",
+            "severity",
+            "assigned_to",
+            "creation_time",
+            "component",
+            "sub_component",
+            "target_release",
+            "summary",
+            "status",
+            "cf_cust_facing",
+        ],
+    )
+    query["bug_status"] = ["ASSIGNED", "NEW", "POST"]
+
+    # Bugzilla has a limit max of return, setting no limit
+    query["limit"] = 0
+
+    return query
+
+
+def init_jira_query_for_bugs(open_only=True):
+    project = "OCPBUGS"
+    return init_jira_query(project, TEAM_COMPONENTS, open_only)
+
+
+def init_jira_query_for_escalations():
+    project = "RHOCPPRIO"
+    return init_jira_query(project, ESCALATIONS_COMPONENT)
+
+
+def get_username_and_usermail_from_assignee(assignee):
+    # always return user,user@redhat.com regardless of whether
+    # assignee is a username or a usermail
+    # Useful for jira, where the usermail is most often, but not always,
+    # what appears as assignee for a bug.
+    mail_domain = '@redhat.com'
+    if assignee.endswith(mail_domain):
+        usermail = assignee
+        username = assignee[:-len(mail_domain)]
+    else:
+        usermail = assignee + mail_domain
+        username = assignee
+    return username, usermail
+
+
+def get_username_and_usermail_from_alias(possible_alias):
+    # always return user,user@redhat.com regardless of whether
+    # possible_alias is a username or a usermail
+    # Useful for jira, where the usermail is most often, but not always,
+    # what appears as assignee for a bug.
+    alias, email_alias = get_username_and_usermail_from_assignee(possible_alias)
+    username = ALIASES_TO_USERNAMES.get(alias)
+    if username:
+        return get_username_and_usermail_from_assignee(username)
+    return None, None
+
+
+def get_alias_and_email_alias_from_username(username):
+    # always return user,user@redhat.com regardless of whether
+    # possible_alias is a username or a usermail
+    # Useful for jira, where the usermail is most often, but not always,
+    # what appears as assignee for a bug.
+    for alias_tmp, username_tmp in ALIASES_TO_USERNAMES.items():
+        if username_tmp == username:
+            alias, alias_email = get_username_and_usermail_from_assignee(alias_tmp)
+            return alias, alias_email
+    return None, None
+
+
+def init_jira_query_for_one_assignee(assignee):
+    # include both username and username@redhat.com
+    username, usermail = get_username_and_usermail_from_assignee(assignee)
+    alias, email_alias = get_alias_and_email_alias_from_username(assignee)
+    all_usernames = [x for x in [username, usermail, alias, email_alias] if x]
+    assignee_tpl = 'assignee in ({}) and '
+    assignee_values = ', '.join('"{}"'.format(u) for u in all_usernames)  # (enclose within quotes)
+    query = assignee_tpl.format(assignee_values) + init_jira_query_for_bugs(open_only=False)
+    return query
+
+
+def init_jira_query(project, components, open_only=True):
+    if isinstance(components, str):
+        components = (components,)  # make it a tuple
+
+    query_fmt = "project={} and component in ({})"
+    if open_only:
+        # Possible states: new, assigned, on_dev, post, on_qa, verified,
+        # modified, release_pending, closed
+        query_fmt += ' and status in ("NEW", "ASSIGNED", "POST", "ON_DEV")'
+
+    component_substr = ", ".join(('"{}"'.format(c) for c in components))
+    bugs_query = query_fmt.format(project, component_substr)
+    return bugs_query
+
+
+def time_query(func):
+    def wrapper(bz_api, query_str):
+        t_start = time.time()
+        bugs = func(bz_api, query_str)
+        t_end = time.time()
+        print("- Found {} bugs in {:.1f}s with the query: {}".format(
+            len(bugs), t_end - t_start, query_str))
+        return bugs
+
+    return wrapper
+
+
+@time_query
+def run_bz_query(bz_api, query_str):
+    res = []
+    try:
+        res = bz_api.query(query_str)
+    except Exception as e:
+        print("Error running BUGZILLA query {}, error: {}".format(query_str, e))
+    return res
+
+
+@time_query
+def run_jira_query(jira_api, query):
+    res = []
+    # jira server is highly unreliable
+    # try querying it 100 times and then give up
+    max_attempts = 100
+    for i in range(max_attempts):
+        try:
+            res = jira_api.search_issues(query, maxResults=False, expand="changelog")
+        except:
+            # print("[attempt {}] Error running JIRA query {}, error: {}".format(i, query, e))
+            sys.stdout.write(".")
+            sys.stdout.flush()
+            time.sleep(0.05)
+            if i == max_attempts-1:
+                sys.exit("Failed to query JIRA server {} times. Query: {}".format(
+                    max_attempts, query))
+        else:
+            print("JIRA query successful at attempt={}".format(i))
+            break
+    return res
+
+
+def run_queries(bz=True, jira_bugs=True, jira_escalations=False):
+    # initialize bugzilla and jira clients
+    clients = init_clients(bz=bz, jira_=(jira_bugs or jira_escalations))
+
+    # prepare the queries
+    query_dict = init_queries(
+        clients, bz=bz, jira_bugs=jira_bugs, jira_escalations=jira_escalations
+    )
+
+    # run the queries and store the results in the per-backend dictionary
+    if bz:
+        query_str = query_dict[BZ_BUGS]["query"]
+        query_dict[BZ_BUGS]["bugs"] = run_bz_query(clients[BZ_KEY], query_str)
+
+    if jira_bugs:
+        query_str = query_dict[JIRA_BUGS]["query"]
+        query_dict[JIRA_BUGS]["bugs"] = run_jira_query(clients[JIRA_KEY], query_str)
+
+    if jira_escalations:
+        query_str = query_dict[JIRA_ESCALATIONS]["query"]
+        query_dict[JIRA_ESCALATIONS]["bugs"] = run_jira_query(
+            clients[JIRA_KEY], query_str
+        )
+
+    return query_dict
+
+
+# takes a list of bugs as output by run_query and a developers dict as output
+# by init_developers and returns a developers dict filled in with updated parameters
+def process_bz_bugs(bugs, developers):
+    # bugs that have been in new state for more than 30 days (arbitary time window)
+    stale_bugs = {}
+    for bug in bugs:
+        assignee_user, assignee_mail = get_username_and_usermail_from_assignee(bug.assigned_to)
+
+        if assignee_mail not in developers:
+            # check if it's a known alias and if so, get the official username
+            tmp_assignee, tmp_email = get_username_and_usermail_from_alias(assignee_user)
+            if tmp_email and tmp_email in developers:
+                assignee_user, assignee_mail = tmp_assignee, tmp_email
+            else:
+                # no valid assignee found, skip this bug
+                continue
+
+        if bug.status == "NEW":
+            developers[assignee_mail]["bugs_in_new"] += 1
+
+            # Bugs in NEW state for more than 30 days
+            creation_time = datetime.strptime(str(bug.creation_time), "%Y%m%dT%H:%M:%S")
+            if (creation_time + timedelta(days=STALE_THRESHOLD)) <= datetime.now():
+                stale_bugs[bug.id] = {
+                    "summary": bug.summary,
+                    "url": "https://bugzilla.redhat.com/show_bug.cgi?id=" + str(bug.id),
+                    "creation_date": creation_time,
+                    "status": bug.status,
+                    "component": bug.component,
+                    "target_release": bug.target_release,
+                    "sub_component": bug.sub_component,
+                }
+
+        elif bug.status == "ASSIGNED":
+            developers[assignee_mail]["bugs_in_assigned"] += 1
+        elif bug.status == "POST":
+            developers[assignee_mail]["bugs_in_post"] += 1
+
+        developers[assignee_mail]["number_of_bugs"] += 1
+
+        if bug.sub_component == "ovn-kubernetes":
+            developers[assignee_mail]["number_of_ovnk_bugs"] += 1
+        elif bug.sub_component == "openshift-sdn":
+            developers[assignee_mail]["number_of_osdn_bugs"] += 1
+        else:
+            developers[assignee_mail]["number_of_other_bugs"] += 1
+
+        if bug.cf_cust_facing.lower() == "yes":
+            developers[assignee_mail]["number_of_escalations"] += 1
+
+        developers[assignee_mail]["bugs_urls"].append(
+            "https://bugzilla.redhat.com/show_bug.cgi?id=" + str(bug.id)
+        )
+        developers[assignee_mail]["points"] += (
+            SEVERITY_WEIGHTS[bug.severity] + PRIORITY_WEIGHTS[bug.priority]
+        )
+    return developers, stale_bugs
+
+
+def was_jira_bug_recently_assigned(bug):
+    # Evaluate whether the bug
+    # Example of the changelog field for a jira bug:
+    # {'id': '41700442',
+    #  'author': {'self': 'https://issues.redhat.com/rest/api/2/user?username=rravaiol%40redhat.com',
+    #   'name': 'rravaiol@redhat.com',
+    #   'key': 'JIRAUSER165708',
+    #   'emailAddress': 'rravaiol@redhat.com',
+    #   'displayName': 'Riccardo Ravaioli',
+    #   'active': True,
+    #   'timeZone': 'UTC'},
+    #  'created': '2023-01-06T14:36:45.317+0000',
+    #  'items': [{'field': 'assignee',
+    #    'fieldtype': 'jira',
+    #    'from': 'bbennett',
+    #    'fromString': 'Ben Bennett',
+    #    'to': 'JIRAUSER163232',
+    #    'toString': 'Jaime Caamaño Ruiz'}]},
+    # skip automatically-generated backports
+    if "prow bot" in bug.get_field('creator').displayName.lower():
+        return False
+
+    try:
+        # take all changelogs that modified the assignee and evaluate the latest
+        assignee_changes = sorted(
+            [change for change in bug.changelog.histories
+             for item in change.items
+             if item.field == 'assignee'],
+            key=lambda change: parse(change.created))  # sort by change timestamp
+
+        if assignee_changes:
+            latest_assign = assignee_changes[-1].created
+        else:
+            # if there are no assign changelogs, assume that the ticket was created
+            # already with the current assignee and consider the creation date
+            # as the assigning date
+            latest_assign = bug.get_field("created")
+
+        days_difference = (datetime.now() - parse(latest_assign).replace(tzinfo=None)).days
+        return days_difference <= ASSIGN_WINDOW_DAYS
+
+    except Exception as ex:
+        print("could not evaluate changelog for {}: {}".format(bug, ex))
+
+    return False
+
+
+def process_jira_bugs(bugs, developers, quick=False):
+    # bugs that have been in new state for more than 30 days (arbitary time window)
+    stale_bugs = {}
+    for bug in bugs:
+        assignee = bug.get_field("assignee").name if bug.get_field("assignee") else None
+        if not assignee:
+            continue
+        assignee_user, assignee_mail = get_username_and_usermail_from_assignee(assignee)
+        # values for status: new, assigned, on_dev, post, on_qa, verified, modified,
+        # release_pending, closed
+        status = bug.get_field("status").name.lower()
+        bug_id = str(bug.key)
+        creation_time = bug.get_field("created")
+        summary = bug.get_field("summary")
+        bug_key = str(bug.key)
+        components = [c.name.lower() for c in bug.get_field("components")]
+        fix_versions = [
+            v.name for v in bug.get_field("fixVersions")
+        ]  # TODO maybe just take the 0th element...
+        url = "https://issues.redhat.com/browse/" + str(bug_key)
+        priority = bug.get_field("priority").name.lower()
+        severity = None
+        # TODO not sure today what escalated jira issues in OCPBUGS project
+        # will look like. For now OCPBUGS escalations are not taken into account.
+        # escalations have no severity field
+        if ESCALATIONS_COMPONENT not in components:
+            try:
+                severity = bug.get_field("customfield_12316142")
+                if severity is not None:
+                    severity = severity.value.lower()
+
+            except Exception as e:
+                print("Could not correctly retrieve severity for bug {},"
+                      " considering it as 'unspecified'. Error: {}, severity: {}".format(
+                          bug, e, severity))
+                severity = 'unspecified'
+
+        # an assignee in jira bugs is very often a developer's official email address, but
+        # it might also be just a username. On BZ aliases are the primary choice.
+        if assignee_mail not in developers:
+            # check if it's a known alias
+            tmp_assignee, tmp_email = get_username_and_usermail_from_alias(assignee_user)
+            if tmp_email and tmp_email in developers:
+                assignee_user, assignee_mail = tmp_assignee, tmp_email
+            else:
+                # no valid assignee found, skip this bug
+                continue
+
+        if status == "new":
+            developers[assignee_mail]["bugs_in_new"] += 1
+            # Bugs in NEW state for more than 30 days
+            creation_time_obj = parser.parse(creation_time)
+            if (creation_time_obj + timedelta(days=STALE_THRESHOLD)).replace(
+                tzinfo=None
+            ) <= datetime.now():
+                stale_bugs[bug_id] = {
+                    "summary": summary,
+                    "url": url,
+                    "creation_date": creation_time,
+                    "status": status,
+                    "component": components,
+                    "target_release": fix_versions,
+                    "sub_component": None,
+                }
+
+        elif status in ("assigned", "on_dev"):
+            # not sure how the new values coexist with the old ones...
+            developers[assignee_mail]["bugs_in_assigned"] += 1
+
+        elif status == "post":
+            developers[assignee_mail]["bugs_in_post"] += 1
+
+        developers[assignee_mail]["number_of_bugs"] += 1
+
+        if OVN_COMPONENT in components:
+            developers[assignee_mail]["number_of_ovnk_bugs"] += 1
+        elif SDN_COMPONENT in components:
+            developers[assignee_mail]["number_of_osdn_bugs"] += 1
+        elif ESCALATIONS_COMPONENT in components:
+            developers[assignee_mail]["number_of_escalations"] += 1
+        else:
+            developers[assignee_mail]["number_of_other_bugs"] += 1
+
+        developers[assignee_mail]["bugs_urls"].append(url)
+        developers[assignee_mail]["points"] += PRIORITY_WEIGHTS[priority]
+
+    if not quick:
+        # for each developer, issue a new query and count the number of
+        # recently assigned bugs (open or closed)
+        for dev in developers:
+            developers[dev]["recently_assigned"] = count_recently_assigned_bugs(dev)
+
+    return developers, stale_bugs
+
+
+def process_bugs(bugs_dict, developers, quick=False):
+    stale_bugs = {}
+    if BZ_BUGS in bugs_dict:
+        bugs = bugs_dict[BZ_BUGS]["bugs"]
+        developers, stale_bugs_bz = process_bz_bugs(bugs, developers)
+        stale_bugs.update(stale_bugs_bz)
+
+    if JIRA_BUGS in bugs_dict:
+        bugs = bugs_dict[JIRA_BUGS]["bugs"]
+        developers, stale_bugs_jira = process_jira_bugs(bugs, developers, quick)
+        stale_bugs.update(stale_bugs_jira)
+
+    if JIRA_ESCALATIONS in bugs_dict:
+        bugs = bugs_dict[JIRA_ESCALATIONS]["bugs"]
+        developers, stale_bugs_jira = process_jira_bugs(bugs, developers, quick=True)
+        stale_bugs.update(stale_bugs_jira)
+
+    return developers, stale_bugs
+
+
+def print_results(developers, stale_bugs, print_stale_bugs=False, quick=False):
+    # Sorting the list by points field
+    ordered_by_points = collections.OrderedDict(
+        sorted(developers.items(), key=lambda x: x[1]["points"])
+    )
+    if print_stale_bugs:
+        print(
+            colors.HEADER
+            + "\nBugs in NEW state for more than %d days: %s"
+            % (STALE_THRESHOLD, len(stale_bugs))
+            + colors.END
+        )
+        print(
+            colors.HEADER
+            + "Good candidates for needinfo to owner asking if need help or find another assignee"
+            + colors.END
+        )
+        print(
+            colors.BOLD
+            + "================================================"
+            + colors.END
+        )
+        for k, v in stale_bugs.items():
+            print("Summary: %s" % v["summary"])
+            print("  Creation date: %s" % v["creation_date"])
+            print("  Status: %s" % v["status"])
+            print("  Target Release: %s" % v["target_release"])
+            print("  Component: %s" % v["component"])
+            print("  Sub-Component: %s" % v["sub_component"])
+            print("  Bug URL: %s\n" % v["url"])
+
+        return
+
+    print(
+        colors.HEADER
+        + "\nRank of developers least overloaded (today) [%s]:" % date.today()
+        + colors.END
+    )
+    print(
+        colors.BOLD
+        + "========================================================"
+        + colors.END
+    )
+    # Rank list starts with 1, which means developer least overloaded at the moment
+    for rank, (k, v) in enumerate(ordered_by_points.items()):
+        print("#{} Developer: {}".format(rank + 1, k))
+        print("  Rank Points: {}".format(v["points"]))
+        print("  Bugs:        {}".format(v["number_of_bugs"]))
+        # print("  Escalations: {}".format(v["number_of_escalations"]))
+        print("  OVN-K        {}".format(v["number_of_ovnk_bugs"]))
+        print("  OSDN:        {}".format(v["number_of_osdn_bugs"]))
+        print("  Other:       {}".format(v["number_of_other_bugs"]))
+        print("  NEW:         {}".format(v["bugs_in_new"]))
+        print("  ASSIGNED:    {}".format(v["bugs_in_assigned"]))
+        print("  POST:        {}".format(v["bugs_in_post"]))
+        if not quick:
+            print("  Assigned <= {} days: {}".format(
+                ASSIGN_WINDOW_DAYS, v["recently_assigned"]))
+        print("  Bug URLs:    {}".format(v["bugs_urls"]))
+        print("")
+
+    print(colors.HEADER + "\nBugzilla status explained:" + colors.END)
+    print(colors.BOLD + "=============================" + colors.END)
+    print(" - NEW: Bug need to be triaged or work not started.")
+    print(" - ASSIGNED: Bug has been triaged and developer started working.\n")
+
+    print(" - POST: Bug has a possible solution and the patch is under review.")
+    print("   ATTENTION: might need developer rework the solution.\n")
+
+    print(
+        " - MODIFIED: patch has being commited upstream/downstream, developers are all set."
+    )
+    print(
+        "   Usually ERRATA system moves to ON_QA as soon the Bugzilla report",
+        "is attached to an Errata ticket.\n",
+    )
+
+    print(
+        " - ON_QE: Quality Engineers need to test and verify if the solution",
+        "worked. As soon they ack the solution\n\t and move the bug to VERIFIED,",
+        "Errata system can scheduled and SHIP the new release to users.",
+    )
+
+
+def print_summary_table(developers, quick=False):
+    # Sorting the list by points field
+    ordered_by_points = collections.OrderedDict(
+        sorted(developers.items(), key=lambda x: x[1]["points"])
+    )
+    print(
+        colors.HEADER
+        + "\nRank of developers least overloaded (today) [%s]:" % date.today()
+        + colors.END
+    )
+    print(
+        colors.BOLD
+        + "========================================================"
+        + colors.END
+    )
+    # Rank list starts with 1, which means developer least overloaded at the moment
+    headers = ["#", "Developer", "Points", "Bugs", "NEW", "ASSIGNED", "POST"]
+    if not quick:
+        headers.append("Assigned\n <=21 days")
+    lines = []
+    for rank, (k, v) in enumerate(ordered_by_points.items()):
+        new_line = [rank+1,
+                    k,
+                    v["points"],
+                    v["number_of_bugs"],
+                    v["bugs_in_new"],
+                    v["bugs_in_assigned"],
+                    v["bugs_in_post"]]
+        if not quick:
+            new_line.append(v["recently_assigned"])
+        lines.append(new_line)
+    print(tabulate(lines, headers=headers))
+
+    explanation_message = '''
+Points are calculated according to bug priority:
+- blocker:  {blocker}
+- critical:  {critical}
+- major:      {major}
+- normal:      {normal}
+- minor:        {minor}
+- undefined:    {undefined}
+'''.format(**PRIORITY_WEIGHTS)
+    print(explanation_message)
+
+
+def parse_input_args():
+    parser = argparse.ArgumentParser()
+    default_str = " By default, when no bug type is specified as input arg, bz and jira bugs are fetched, but not jira escalations."
+    parser.add_argument(
+        "--bz", help=("run a query to bugzilla." + default_str), action="store_true"
+    )
+
+    parser.add_argument(
+        "--jira-bugs",
+        help=("run a query to jira server for jira bugs." + default_str),
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--jira-escalations",
+        help=("run a query to jira server for jira escalations." + default_str),
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "-v", "--verbose",
+        help="Print detailed results",
+        action="store_true"
+    )
+
+    parser.add_argument(
+        "-q", "--quick",
+        help="Skip assign analysis and get results more quickly",
+        action="store_true"
+    )
+    parser.add_argument(
+        "--old-bugs",
+        help=(
+            "Print a list of bugs that have been in the new"
+            " state for more than %d days" % STALE_THRESHOLD
+        ),
+        action="store_true",
+    )
+
+    args = parser.parse_args()
+
+    # By default bz, jira bugs are queried and parsed. Jira escalations are not.
+    # However, as soon as issue types are explicitly specified as input parameters,
+    # only those that are specified are queried.
+    bz = jira_bugs = jira_escalations = False
+    if args.bz or args.jira_bugs or args.jira_escalations:
+        bz = bool(args.bz)
+        jira_bugs = bool(args.jira_bugs)
+        jira_escalations = bool(args.jira_escalations)
+    else:
+        bz = jira_bugs = True
+        jira_escalations = False
+
+    params = {
+        "bz": bz,
+        "jira_bugs": jira_bugs,
+        "jira_escalations": jira_escalations,
+        "old-bugs": bool(args.old_bugs),
+        "verbose": bool(args.verbose),
+        "quick": bool(args.quick)
+    }
+
+    return params
+
+
+def main():
+    params = parse_input_args()
+    developers = init_developers_dict()
+    bugs_dict = run_queries(
+        bz=params.get("bz"),
+        jira_bugs=params.get("jira_bugs"),
+        jira_escalations=params.get("jira_escalations"),
+    )
+    developers, stale_bugs = process_bugs(bugs_dict, developers, params.get("quick"))
+    if params.get("verbose"):
+        print_results(developers,
+                      stale_bugs,
+                      print_stale_bugs=params.get("old-bugs"),
+                      quick=params.get("quick"))
+        print_summary_table(developers, params.get("quick"))
+    else:
+        print_summary_table(developers, params.get("quick"))
+
+    print("Notes:")
+    for bug in retrieve_unassigned_jira_bugs():
+        print("- [{0}](https://issues.redhat.com/browse/{0}) - {1}  ".format(bug, bug.get_field("summary")))
+
+if __name__ == "__main__":
+    main()
