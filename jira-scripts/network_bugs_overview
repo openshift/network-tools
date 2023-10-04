@@ -123,7 +123,7 @@ def retrieve_unassigned_jira_bugs():
     query = '(filter in ("SDN BZ filter", "SDN OCPBUGS") OR project = RHOCPPRIO AND component in ("networking/sdn") ' \
             'OR project = SDN AND issuetype = Bug) AND filter in (Unresolved) AND ((project = OCPBUGSM OR project = ' \
             'OCPBUGS) AND assignee = "bbennett@redhat.com" OR project = RHOCPPRIO AND assignee in (' \
-            '"anbhat@redhat.com", "vpickard@redhat.com") OR assignee is EMPTY) ORDER BY Rank DESC'
+            '"anbhat@redhat.com", "zshi@redhat.com") OR assignee is EMPTY) ORDER BY Rank DESC'
     bugs = run_jira_query(clients[JIRA_KEY], query)
     return bugs
 
