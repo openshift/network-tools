@@ -36,8 +36,8 @@ Examples:
   $USAGE -it
   $USAGE -p ovnkube-node-twkpx -it
 
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE -p ovnkube-node-cdv6q ovn-nbctl show
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE -p ovnkube-node-twkpx ovn-sbctl dump-flows
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE -p ovnkube-node-cdv6q ovn-nbctl show
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE -p ovnkube-node-twkpx ovn-sbctl dump-flows
 "
 }
 

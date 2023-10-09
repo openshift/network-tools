@@ -71,28 +71,28 @@ Examples:
       [terminal2] oc cp PODNAME:/tmp/tcpdump.pcap <local_path>
       # you can Ctrl+C terminal1 when you don't need debug pod anymore)
 
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- \\
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- \\
       $USAGE default hello-pod nc -z -v <ip> <port>
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- \\
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- \\
       \"$USAGE default hello-pod ping 8.8.8.8 -c 5 > /must-gather/ping\"
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- \\
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- \\
       \"$USAGE default hello-pod timeout 30 tcpdump > /must-gather/tcpdump_output\"
 
   To run multiple commands, use
-      oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- \\
+      oc adm must-gather $NETWORK_TOOLS_IMAGE -- \\
           $USAGE --multiple-commands default hello-pod '\"<command1>; <command2>\"'
       Example:
-          oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- \\
+          oc adm must-gather $NETWORK_TOOLS_IMAGE -- \\
               $USAGE -mc default hello-pod '\"ifconfig; ip a\"'
   To prevent parameter expansion, use
-      oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- \\
+      oc adm must-gather $NETWORK_TOOLS_IMAGE -- \\
           $USAGE --no-substitution default hello-pod \"'\"'<command to run>'\"'\"
       Example:
-          oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- \\
+          oc adm must-gather $NETWORK_TOOLS_IMAGE -- \\
               $USAGE -ns default hello-pod \"'\"'i=0; ip a; i=\$(( \$i + 1 )); echo \$i'\"'\"
 
   If the command you are running generates a file instead of output, you can download that file by preserving debug pod
-      [terminal1] oc adm must-gather --image=$NETWORK_TOOLS_IMAGE --  \\
+      [terminal1] oc adm must-gather $NETWORK_TOOLS_IMAGE --  \\
           $USAGE -pp default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
 
       # wait for

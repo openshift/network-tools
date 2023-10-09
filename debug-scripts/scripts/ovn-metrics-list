@@ -20,7 +20,7 @@ Examples:
   $USAGE --node node_name /some/path/metrics
   $USAGE /some/path/metrics
 
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE /must-gather
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE /must-gather
 "
 }
 

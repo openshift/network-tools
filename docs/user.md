@@ -36,7 +36,7 @@ You can also create a symlink for your convenience to just use `network-tools`
 ### On the cluster
 
 You can use almost all the same scripts on the cluster via network-tools image, to run one command you can use
-`oc adm must-gather --image quay.io/openshift/origin-network-tools:latest -- network-tools -h`
+`oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools -h`
 
 WARNING! `must-gather` doesn't allow interactive input, don't use interactive options with must-gather.
 
@@ -45,10 +45,10 @@ Running `network-tools` on a cluster is different from local run:
 2. Everything from the `/must-gather` folder will be copied at the end of command execution, therefore
    1. to forward command output to a file use
 
-      `oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- "network-tools <command> > /must-gather/<filename>"`
+      `oc adm must-gather --image-stream openshift/network-tools:latest -- "network-tools <command> > /must-gather/<filename>"`
    2. for commands that accept output folder as parameter, use `/must-gather`
    
-`oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools -h` will show all available 
+`oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools -h` will show all available 
 commands on the cluster.
 
 To run script that are not included in the `network-tools -h` call them directly via
@@ -70,7 +70,7 @@ The image is based on oc https://github.com/openshift/oc/blob/master/images/tool
 and also includes all the tools from this Dockerfile.
 
 You can run custom command from `network-tools` container by
-`oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- <cmd>`
+`oc adm must-gather --image-stream openshift/network-tools:latest -- <cmd>`
 
 **WARNING!** `must-gather` has a timeout of 10 minutes, and shouldn't be interrupted with Ctrl+C in order for
 `must-gather` to properly clean up its resources. 
@@ -80,10 +80,9 @@ To make sure commands like tcpdump stop in N seconds you can use `timeout N <com
 N seconds.
 
 ```
-oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- timeout 5 ping 8.8.8.8
+oc adm must-gather --image-stream openshift/network-tools:latest -- timeout 5 ping 8.8.8.8
 
 output:
-[must-gather      ] OUT pod for plug-in image quay.io/openshift/origin-network-tools:latest created
 [must-gather-9j484] POD 2021-11-08T10:31:18.945125411Z PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.
 [must-gather-9j484] POD 2021-11-08T10:31:18.945125411Z 64 bytes from 8.8.8.8: icmp_seq=1 ttl=49 time=3.54 ms
 [must-gather-9j484] POD 2021-11-08T10:31:19.945091109Z 64 bytes from 8.8.8.8: icmp_seq=2 ttl=49 time=1.76 ms
@@ -105,7 +104,7 @@ To copy a folder from network-tools container use `--source-dir '<container dir>
 ## Examples
 * Run tcpdump on all master nodes
   ```
-  oc adm must-gather --source-dir '/tmp/tcpdump/' --image quay.io/openshift/origin-network-tools:latest 
+  oc adm must-gather --source-dir '/tmp/tcpdump/' --image-stream openshift/network-tools:latest 
   --node-selector 'kubernetes.io/os=linux,node-role.kubernetes.io/master' --host-network -- 
   timeout 30 tcpdump -i any -w /tmp/tcpdump/\$POD_NAME-%Y-%m-%dT%H:%M:%S.pcap -W 1 -G 300
   ```
@@ -121,11 +120,10 @@ To copy a folder from network-tools container use `--source-dir '<container dir>
   ```
   To run a trace between them:
    ```
-    oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- ovnkube-trace -dst-namespace default -dst multitool-756669cf4f-bhx64 -src-namespace default -src multitool-756669cf4f-6bftt -tcp -loglevel 5
-    [must-gather      ] OUT Using must-gather plugin-in image: quay.io/openshift/origin-network-tools:latest
+    oc adm must-gather --image-stream openshift/network-tools:latest -- ovnkube-trace -dst-namespace default -dst multitool-756669cf4f-bhx64 -src-namespace default -src multitool-756669cf4f-6bftt -tcp -loglevel 5
     [must-gather      ] OUT namespace/openshift-must-gather-zm2mj created
     [must-gather      ] OUT clusterrolebinding.rbac.authorization.k8s.io/must-gather-4gcvh created
-    [must-gather      ] OUT pod for plug-in image quay.io/openshift/origin-network-tools:latest created
+    [must-gather      ] OUT pod for plug-in image quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:8750c821da621a846fd92b52cee7d6d42c3035790e026d30e5589f7b811a2bb4 created
     [must-gather-gq2ln] POD I0217 13:39:39.939788       8 ovs.go:95] Maximum command line arguments set to: 191102
     [must-gather-gq2ln] POD I0217 13:39:39.940114       8 ovnkube-trace.go:517] Log level set to: 5
     <snipped>.....
@@ -166,8 +164,8 @@ Examples:
   network-tools ovn-db-run-command -it
   network-tools ovn-db-run-command -p ovnkube-node-twkpx -it
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-db-run-command -p ovnkube-node-cdv6q ovn-nbctl show
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-db-run-command -p ovnkube-node-twkpx ovn-sbctl dump-flows
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-db-run-command -p ovnkube-node-cdv6q ovn-nbctl show
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-db-run-command -p ovnkube-node-twkpx ovn-sbctl dump-flows
 
 ```
 * `network-tools ovn-get`
@@ -188,9 +186,9 @@ Examples:
   network-tools ovn-get dbs ./dbs
   network-tools ovn-get mode
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get leaders
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get dbs
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get mode
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-get leaders
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-get dbs
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-get mode
 
 ```
 * `network-tools ovn-metrics-list`
@@ -208,7 +206,7 @@ Examples:
   network-tools ovn-metrics-list --node node_name /some/path/metrics
   network-tools ovn-metrics-list /some/path/metrics
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-metrics-list /must-gather
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-metrics-list /must-gather
 
 ```
 * `network-tools pod-run-netns-command`
@@ -277,28 +275,28 @@ Examples:
       [terminal2] oc cp PODNAME:/tmp/tcpdump.pcap <local_path>
       # you can Ctrl+C terminal1 when you don't need debug pod anymore)
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+  oc adm must-gather --image-stream openshift/network-tools:latest -- \
       network-tools pod-run-netns-command default hello-pod nc -z -v <ip> <port>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+  oc adm must-gather --image-stream openshift/network-tools:latest -- \
       "network-tools pod-run-netns-command default hello-pod ping 8.8.8.8 -c 5 > /must-gather/ping"
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+  oc adm must-gather --image-stream openshift/network-tools:latest -- \
       "network-tools pod-run-netns-command default hello-pod timeout 30 tcpdump > /must-gather/tcpdump_output"
 
   To run multiple commands, use
-      oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+      oc adm must-gather --image-stream openshift/network-tools:latest -- \
           network-tools pod-run-netns-command --multiple-commands default hello-pod '"<command1>; <command2>"'
       Example:
-          oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+          oc adm must-gather --image-stream openshift/network-tools:latest -- \
               network-tools pod-run-netns-command -mc default hello-pod '"ifconfig; ip a"'
   To prevent parameter expansion, use
-      oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+      oc adm must-gather --image-stream openshift/network-tools:latest -- \
           network-tools pod-run-netns-command --no-substitution default hello-pod "'"'<command to run>'"'"
       Example:
-          oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- \
+          oc adm must-gather --image-stream openshift/network-tools:latest -- \
               network-tools pod-run-netns-command -ns default hello-pod "'"'i=0; ip a; i=$(( $i + 1 )); echo $i'"'"
 
   If the command you are running generates a file instead of output, you can download that file by preserving debug pod
-      [terminal1] oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest --  \
+      [terminal1] oc adm must-gather --image-stream openshift/network-tools:latest --  \
           network-tools pod-run-netns-command -pp default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
 
       # wait for
@@ -329,7 +327,7 @@ Usage: network-tools network-test
 Examples:
   network-tools network-test
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools network-test
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools network-test
 
 ```
 * `network-tools ovn-ipsec-connectivity`
@@ -351,7 +349,7 @@ Usage: network-tools ovn-ipsec-connectivity
 Examples:
   network-tools ovn-ipsec-connectivity
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-ipsec-connectivity
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-ipsec-connectivity
 
 ```
 * `network-tools ovn-nic-firmware`
@@ -366,7 +364,7 @@ Usage: network-tools ovn-nic-firmware
 Examples:
   network-tools ovn-nic-firmware
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-nic-firmware
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-nic-firmware
 
 ```
 * `network-tools ovn-pod-to-pod`
@@ -394,11 +392,11 @@ Examples:
   network-tools ovn-pod-to-pod "" <dst-pod-namespace>/<dst-pod-name>
   network-tools ovn-pod-to-pod <src-pod-namespace>/<src-pod-name>
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-pod-to-pod
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-pod-to-pod <src-node-name> <dst-node-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-pod-to-pod <src-pod-namespace>/<src-pod-name> <dst-pod-namespace>/<dst-pod-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-pod-to-pod \"\" <dst-pod-namespace>/<dst-pod-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-pod-to-pod <src-pod-namespace>/<src-pod-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-pod
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-pod <src-node-name> <dst-node-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-pod <src-pod-namespace>/<src-pod-name> <dst-pod-namespace>/<dst-pod-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-pod \"\" <dst-pod-namespace>/<dst-pod-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-pod <src-pod-namespace>/<src-pod-name>
 
 ```
 * `network-tools ovn-pod-to-svc`
@@ -430,11 +428,11 @@ Examples:
   network-tools ovn-pod-to-svc "" <dst-pod-namespace>/<dst-pod-name>
   network-tools ovn-pod-to-svc <src-pod-namespace>/<src-pod-name>
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-pod-to-svc
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-pod-to-svc <src-node-name> <dst-node-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-pod-to-svc <src-pod-namespace>/<src-pod-name> <dst-svc-namespace>/<dst-svc-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-pod-to-svc \"\" <dst-svc-namespace>/<dst-svc-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-pod-to-svc <src-pod-namespace>/<src-pod-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-svc
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-svc <src-node-name> <dst-node-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-svc <src-pod-namespace>/<src-pod-name> <dst-svc-namespace>/<dst-svc-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-svc \"\" <dst-svc-namespace>/<dst-svc-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-svc <src-pod-namespace>/<src-pod-name>
 
 ```
 * `network-tools sdn-cluster-info`
@@ -456,7 +454,7 @@ Usage: network-tools sdn-cluster-info [node_name]
 Examples:
   network-tools sdn-cluster-info
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-cluster-info
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-cluster-info
 
 ```
 * `network-tools sdn-node-connectivity`
@@ -466,10 +464,10 @@ Examples:
 This script checks the node connectivity on an Openshift SDN cluster from a must-gather pod.
 ATTENTION! Can't be run locally
 
-Usage: oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-node-connectivity
+Usage: oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-node-connectivity
 
 Examples:
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-node-connectivity
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-node-connectivity
 
 ```
 * `network-tools sdn-pod-to-pod`
@@ -495,11 +493,11 @@ Examples:
   network-tools sdn-pod-to-pod "" <dst-pod-namespace>/<dst-pod-name>
   network-tools sdn-pod-to-pod <src-pod-namespace>/<src-pod-name>
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-pod
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-pod <src-node-name> <dst-node-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-pod <src-pod-namespace>/<src-pod-name> <dst-pod-namespace>/<dst-pod-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-pod \"\" <dst-pod-namespace>/<dst-pod-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-pod <src-pod-namespace>/<src-pod-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-pod
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-pod <src-node-name> <dst-node-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-pod <src-pod-namespace>/<src-pod-name> <dst-pod-namespace>/<dst-pod-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-pod \"\" <dst-pod-namespace>/<dst-pod-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-pod <src-pod-namespace>/<src-pod-name>
 
 ```
 * `network-tools sdn-pod-to-svc`
@@ -528,11 +526,11 @@ Examples:
   network-tools sdn-pod-to-svc "" <dst-pod-namespace>/<dst-pod-name>
   network-tools sdn-pod-to-svc <src-pod-namespace>/<src-pod-name>
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-svc
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-svc <src-node-name> <dst-node-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-svc <src-pod-namespace>/<src-pod-name> <dst-svc-namespace>/<dst-svc-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-svc \"\" <dst-svc-namespace>/<dst-svc-name>
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools sdn-pod-to-svc <src-pod-namespace>/<src-pod-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-svc
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-svc <src-node-name> <dst-node-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-svc <src-pod-namespace>/<src-pod-name> <dst-svc-namespace>/<dst-svc-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-svc \"\" <dst-svc-namespace>/<dst-svc-name>
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-svc <src-pod-namespace>/<src-pod-name>
 
 ```
 * `network-tools ci-artifacts-get`
