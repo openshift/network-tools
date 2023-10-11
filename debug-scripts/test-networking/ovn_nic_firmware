@@ -33,7 +33,7 @@ Usage: $USAGE
 Examples:
   $USAGE
 
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE
 "
 }
 

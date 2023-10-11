@@ -4,7 +4,7 @@ set -eo pipefail
 OVN_NAMESPACE="openshift-ovn-kubernetes"
 OVN_PLUGIN="OVNKubernetes"
 SDN_PLUGIN="OpenShiftSDN"
-NETWORK_TOOLS_IMAGE="quay.io/openshift/origin-network-tools:latest"
+NETWORK_TOOLS_IMAGE="--image-stream openshift/network-tools:latest"
 
 get_ovnk_leader_node () {
   n=$(oc -n ${OVN_NAMESPACE} get lease ovn-kubernetes-master -o jsonpath='{.spec.holderIdentity}' 2> /dev/null)
@@ -149,7 +149,7 @@ To run commands for pod netnamespace use
 
 nsenter -n -t $ns_pid <command>
 "
-      oc debug node/"$node_name" --image=$NETWORK_TOOLS_IMAGE
+      oc debug node/"$node_name" $NETWORK_TOOLS_IMAGE
     else
       echo
       echo "INFO: Running $command in the netns of pod $pod"
@@ -157,7 +157,7 @@ nsenter -n -t $ns_pid <command>
       if [ -n "$SLEEP" ]; then
         FULL_COMMAND="($FULL_COMMAND) $SLEEP"
       fi
-      oc debug node/"$node_name" --image=$NETWORK_TOOLS_IMAGE -- bash -c "$FULL_COMMAND"
+      oc debug node/"$node_name" $NETWORK_TOOLS_IMAGE -- bash -c "$FULL_COMMAND"
     fi
 }
 

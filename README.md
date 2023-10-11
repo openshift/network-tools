@@ -20,9 +20,10 @@ You can also create a symlink for your convenience to just use `network-tools`
 ### On the cluster
 
 You can use almost all the same scripts on the cluster via network-tools image, to run one command you can use
-`oc adm must-gather --image quay.io/openshift/origin-network-tools:latest -- network-tools -h`
+`oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools -h`
 
 WARNING! `must-gather` doesn't allow interactive input, don't use interactive options with must-gather.
+WARNING! For clusters older than 4.13, use `--image quay.io/openshift/origin-network-tools:latest` instead of `--image-streams`
 
 For more examples and options check [user docs](https://github.com/openshift/network-tools/blob/master/docs/user.md)
 

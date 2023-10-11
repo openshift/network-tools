@@ -120,11 +120,11 @@ Examples:
   $USAGE \"\" <dst-pod-namespace>/<dst-pod-name>
   $USAGE <src-pod-namespace>/<src-pod-name>
 
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE <src-node-name> <dst-node-name>
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE <src-pod-namespace>/<src-pod-name> <dst-svc-namespace>/<dst-svc-name>
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE \\\"\\\" <dst-svc-namespace>/<dst-svc-name>
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE <src-pod-namespace>/<src-pod-name>
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE <src-node-name> <dst-node-name>
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE <src-pod-namespace>/<src-pod-name> <dst-svc-namespace>/<dst-svc-name>
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE \\\"\\\" <dst-svc-namespace>/<dst-svc-name>
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE <src-pod-namespace>/<src-pod-name>
 "
 }
 

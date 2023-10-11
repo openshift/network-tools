@@ -22,9 +22,9 @@ Examples:
   $USAGE dbs ./dbs
   $USAGE mode
 
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE leaders
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE dbs
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE mode
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE leaders
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE dbs
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE mode
 "
 }
 
