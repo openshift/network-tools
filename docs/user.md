@@ -138,33 +138,36 @@ The following part of this file is auto-generated based on commands help.
 * `network-tools ovn-db-run-command`
 
 ```
-This script will find a leader pod (sbdb leader if "sb" substring is found in the command, otherwise nbdb leader),
-and then run command inside ovnkube-master container for the found pod.
+In non-ovn-ic (legacy) clusters, this script will find a leader pod (sbdb leader
+if "sb" substring is found in the command, otherwise nbdb leader), and then run command
+inside ovnkube-master container for the found pod.
 
 WARNING! All arguments and flags should be passed in the exact order as they listed below.
+WARNING! With ovn-ic, the -p flag should be provided since all node pods have a db.
 
 Usage: network-tools ovn-db-run-command [-p <pod_name>] [-it] [command]
 
 Options:
   -it:
-      to get interactive shell from the leader container use -it flag and empty command.
+      to get interactive shell from the selected container use -it flag and empty command.
       WARNING! Don't use -it flag when running network-tools with must-gather.
 
   -p pod_name:
-      use given pod name to run command. Finding a leader can take up to 2*(number of master pods) seconds,
-      if you don't want to wait this additional time, add "-p <db_leader_pod_name>" parameter.
-      DB leader pod name will be printed for every call without "-p" option, you can use it for the next calls.
+      use given pod name to run command. In non-ovn-ic custers, finding a leader can take up to
+      2*(number of master pods) seconds, if you don't want to wait this additional time, add
+      "-p <db_selected_pod_name>" parameter.
+      Selected pod name will be printed for every call without "-p" option, you can use it for the next calls.
+
 
 Examples:
   network-tools ovn-db-run-command ovn-nbctl show
-  network-tools ovn-db-run-command -p ovnkube-master-s7gdz ovn-nbctl show
+  network-tools ovn-db-run-command -p ovnkube-node-cdv6q ovn-nbctl show
   network-tools ovn-db-run-command ovn-sbctl dump-flows
   network-tools ovn-db-run-command -it
-  network-tools ovn-db-run-command -p ovnkube-master-s7gdz -it
+  network-tools ovn-db-run-command -p ovnkube-node-twkpx -it
 
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-db-run-command ovn-nbctl show
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-db-run-command -p ovnkube-master-s7gdz ovn-nbctl show
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-db-run-command ovn-sbctl dump-flows
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-db-run-command -p ovnkube-node-cdv6q ovn-nbctl show
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-db-run-command -p ovnkube-node-twkpx ovn-sbctl dump-flows
 
 ```
 * `network-tools ovn-get`
@@ -176,26 +179,33 @@ Usage: network-tools ovn-get [object] [object options]
 
 Supported object:
   leaders - prints ovnk master leader pod, nbdb and sbdb leader pods
-  dbs [output directory] - downloads nbdb and sbdb for every master pod. [output directory] is optional
+  dbs [output directory] - downloads nbdb and sbdb for every master pod. [output directory] is optional for local usage
+      and should be omitted for must-gather
+  mode - prints out whether ovn cluster is running as single zone (legacy) or multi-zone (ovn-ic)
 
 Examples:
   network-tools ovn-get leaders
   network-tools ovn-get dbs ./dbs
+  network-tools ovn-get mode
 
   oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get leaders
-  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get dbs /must-gather
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get dbs
+  oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-get mode
 
 ```
 * `network-tools ovn-metrics-list`
 
 ```
-This script collects OVN networking metrics: master, node, and ovn.
+This script collects OVN networking metrics: control-plane, node, and ovn.
+Metrics will be collected from leader host, unless a node is provided.
 If output folder is not specified, local path will be used.
 
-Usage: network-tools ovn-metrics-list [output_folder]
+Usage: network-tools ovn-metrics-list [-n node] [output_folder]
 
 Examples:
   network-tools ovn-metrics-list
+  network-tools ovn-metrics-list -n node_name
+  network-tools ovn-metrics-list --node node_name /some/path/metrics
   network-tools ovn-metrics-list /some/path/metrics
 
   oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest -- network-tools ovn-metrics-list /must-gather
@@ -244,7 +254,7 @@ WARNING! Don't forget to set timeout for long-running commands with must-gather,
 if you just Ctrl+C it won't cleanup must-gather resources.
 Must-gather has a default 10 min timeout for every command, if you need to change it use --timeout option.
 
-Usage: network-tools pod-run-netns-command [-it] [-pp] [-mc] [-ns] namespace pod [command]
+Usage: network-tools pod-run-netns-command [-it] [--preserve-pod, -pp] [--multiple-commands, -mc] [--no-substitution, -ns] namespace pod [command]
 
 Examples:
   network-tools pod-run-netns-command default hello-pod nc -z -v <ip> <port>
@@ -262,7 +272,7 @@ Examples:
         network-tools pod-run-netns-command -ns default hello-pod 'i=0; ip a; i=$(( $i + 1 )); echo $i'
 
   If the command you are running generates a file instead of printing to stdout, you can download that file by preserving debug pod
-      [terminal1] network-tools pod-run-netns-command --preserve-pod default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
+      [terminal1] network-tools pod-run-netns-command -pp default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
       # wait for DONE printed, note "Starting pod/PODNAME" log)
       [terminal2] oc cp PODNAME:/tmp/tcpdump.pcap <local_path>
       # you can Ctrl+C terminal1 when you don't need debug pod anymore)
@@ -289,7 +299,7 @@ Examples:
 
   If the command you are running generates a file instead of output, you can download that file by preserving debug pod
       [terminal1] oc adm must-gather --image=quay.io/openshift/origin-network-tools:latest --  \
-          network-tools pod-run-netns-command --preserve-pod default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
+          network-tools pod-run-netns-command -pp default hello-pod timeout 10 tcpdump -w /tmp/tcpdump.pcap
 
       # wait for
       # [must-gather-fj4hp] POD 2022-07-29T15:23:03.977676789Z DONE
@@ -572,7 +582,7 @@ In this case just run this script again and it will use new pods.
 The output will show local port for every pod, then you can find pprof web interface at localhost:<pod port>/debug/pprof,
 and collect e.g. cpu profile with
 
-curl http://localhost:<pod port>/debug/pprof/profile?seconds=<duration>
+curl -L http://localhost:<pod port>/debug/pprof/profile?seconds=<duration>
 
 ATTENTION! This is local command, can't be used with must-gather.
 
