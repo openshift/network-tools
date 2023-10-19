@@ -24,24 +24,25 @@ Examples:
 "
 }
 
-if ! command -v nc &> /dev/null; then
-  echo "nc is not installed. Exiting." >&2
-  exit 1
-fi
-
 CM_OR_MASTER_PORT=8100
 NODE_PORT=8200
-
-if [ $(get_ovn_mode) == "ovn-ic" ]; then
-  PPROF_CM_OR_MASTER_PORT=29108
-else
-  PPROF_CM_OR_MASTER_PORT=29102
-fi
 
 prepare () {
   set -u pipefail
 
   trap ctrl_c EXIT
+
+  if ! command -v nc &> /dev/null; then
+    echo "nc is not installed. Exiting." >&2
+    exit 1
+  fi
+
+  if [ $(get_ovn_mode) == "ovn-ic" ]; then
+    PPROF_CM_OR_MASTER_PORT=29108
+  else
+    PPROF_CM_OR_MASTER_PORT=29102
+  fi
+
   IFS=" " read -r -a OVNKUBE_MASTER_PODS <<< "$(oc -n openshift-ovn-kubernetes get pods -l 'app in (ovnkube-master,ovnkube-control-plane)' -o=jsonpath='{.items[*].metadata.name}')"
   for OVNKUBE_MASTER_POD in "${OVNKUBE_MASTER_PODS[@]}"; do
       oc port-forward "${OVNKUBE_MASTER_POD}" ${CM_OR_MASTER_PORT}:${PPROF_CM_OR_MASTER_PORT} -n openshift-ovn-kubernetes > /dev/null &
