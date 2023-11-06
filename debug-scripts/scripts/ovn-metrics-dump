@@ -1,6 +1,10 @@
 #!/bin/bash
+<<<<<<< HEAD
 set -euo pipefail
 
+=======
+set -euo pipefail 
+>>>>>>> 297bd39b288da95d94edbd78040fa73ecf17b5cc
 description() {
   echo -e "Collect prometheus metrics spcified in input file"
 }
@@ -30,7 +34,11 @@ Options:
  To convert an existing metrics dump to openmetrics format, simply use the metrics dump as the input file.  
  The script will detect the metrics dump and automatically convert it to openmentrics format
 
+<<<<<<< HEAD
  Example: $USAGE -i =~/mydumpedmetrics.out 
+=======
+ Example: $USAGE -i=~/mydumpedmetrics.out 
+>>>>>>> 297bd39b288da95d94edbd78040fa73ecf17b5cc
 "
 }
 
@@ -61,10 +69,21 @@ function write_metadata() {
     metric_lookup_name=$metric_name
   fi
 
+<<<<<<< HEAD
   #see if we already have metadata for this metric
   read -r metric_TYPE metric_HELP <<< $(jq -r --arg metric_lookup_name "$metric_lookup_name" \
     '.data | to_entries[] | select(.key==$metric_lookup_name) | "\(.value[].type) \"\(.value[].help)\""' \
     "$outputfile.metadata")
+=======
+  if [ -f $outputfile.metadata ]; then
+    #see if we already have metadata for this metric
+    read -r metric_TYPE metric_HELP <<< $(jq -r --arg metric_lookup_name "$metric_lookup_name" \
+      '.data | to_entries[] | select(.key==$metric_lookup_name) | "\(.value[].type) \"\(.value[].help)\""' \
+      "$outputfile.metadata")
+  else
+    echo "$outputfile.metadata does not exist; doing metadata look ups" >&2
+  fi
+>>>>>>> 297bd39b288da95d94edbd78040fa73ecf17b5cc
 
   if ( [ ! -z "$metric_HELP" ] ); then  #metadata found
     if $verbose; then echo "metadata cached for $metric_name" >&2; fi
