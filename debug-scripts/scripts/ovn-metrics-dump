@@ -15,6 +15,7 @@ Usage: $USAGE --inputfile=<filename> [options]
 
 Options:
   -i|--inputfile    = a text file with metric names; only required parameter
+     See ./debug-scripts/resources/ovnk-prometheus-metrics-list for sample metrics
   -o|--outputfile   = destination file for the promql query results
   -t|--time_parameters= a time range like [5m] or [1d] or combine with offset: -t='[10m] offset 1d'. 
      See https://prometheus.io/docs/prometheus/latest/querying/basics/#time-durations
