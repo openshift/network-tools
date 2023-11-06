@@ -13,7 +13,7 @@ In this case just run this script again and it will use new pods.
 The output will show local port for every pod, then you can find pprof web interface at localhost:<pod port>/debug/pprof,
 and collect e.g. cpu profile with
 
-curl http://localhost:<pod port>/debug/pprof/profile?seconds=<duration>
+curl -L http://localhost:<pod port>/debug/pprof/profile?seconds=<duration>
 
 ATTENTION! This is local command, can't be used with must-gather.
 
@@ -24,33 +24,45 @@ Examples:
 "
 }
 
-MASTER_PORT=8100
+CM_OR_MASTER_PORT=8100
 NODE_PORT=8200
 
 prepare () {
   set -u pipefail
 
   trap ctrl_c EXIT
-  IFS=" " read -r -a OVNKUBE_MASTER_PODS <<< "$(oc -n openshift-ovn-kubernetes get pods -l app=ovnkube-master -o=jsonpath='{.items[*].metadata.name}')"
+
+  if ! command -v nc &> /dev/null; then
+    echo "nc is not installed. Exiting." >&2
+    exit 1
+  fi
+
+  if [ $(get_ovn_mode) == "ovn-ic" ]; then
+    PPROF_CM_OR_MASTER_PORT=29108
+  else
+    PPROF_CM_OR_MASTER_PORT=29102
+  fi
+
+  IFS=" " read -r -a OVNKUBE_MASTER_PODS <<< "$(oc -n openshift-ovn-kubernetes get pods -l 'app in (ovnkube-master,ovnkube-control-plane)' -o=jsonpath='{.items[*].metadata.name}')"
   for OVNKUBE_MASTER_POD in "${OVNKUBE_MASTER_PODS[@]}"; do
-      oc port-forward "${OVNKUBE_MASTER_POD}" ${MASTER_PORT}:29102 -n openshift-ovn-kubernetes > /dev/null &
+      oc port-forward "${OVNKUBE_MASTER_POD}" ${CM_OR_MASTER_PORT}:${PPROF_CM_OR_MASTER_PORT} -n openshift-ovn-kubernetes > /dev/null &
       PIDS+=($!)
-      echo $OVNKUBE_MASTER_POD pprof is on localhost:${MASTER_PORT}
-      ((MASTER_PORT+=1))
+      echo $OVNKUBE_MASTER_POD pprof is on localhost:${CM_OR_MASTER_PORT}
+      ((CM_OR_MASTER_PORT+=1))
   done
-  ((MASTER_PORT-=1))
+  ((CM_OR_MASTER_PORT-=1))
 
   IFS=" " read -r -a OVNKUBE_NODE_PODS <<< "$(oc -n openshift-ovn-kubernetes get pods -l app=ovnkube-node -o=jsonpath='{.items[*].metadata.name}')"
   for OVNKUBE_NODE_POD in "${OVNKUBE_NODE_PODS[@]}"; do
     oc port-forward "${OVNKUBE_NODE_POD}" ${NODE_PORT}:29103 -n openshift-ovn-kubernetes > /dev/null &
-      PIDS+=($!)
-      echo "$OVNKUBE_NODE_POD" pprof is on localhost:${NODE_PORT}
-      ((NODE_PORT+=1))
+    PIDS+=($!)
+    echo "$OVNKUBE_NODE_POD" pprof is on localhost:${NODE_PORT}
+    ((NODE_PORT+=1))
   done
   ((NODE_PORT-=1))
   sleep 10
   while true; do
-    for i in $(seq 8100 "$MASTER_PORT"); do
+    for i in $(seq 8100 "$CM_OR_MASTER_PORT"); do
     	nc -z 127.0.0.1 $i
     done
     for i in $(seq 8200 "$NODE_PORT"); do

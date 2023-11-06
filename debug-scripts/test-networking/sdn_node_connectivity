@@ -53,10 +53,10 @@ help()
     echo "This script checks the node connectivity on an Openshift SDN cluster from a must-gather pod.
 ATTENTION! Can't be run locally
 
-Usage: oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
+Usage: oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE
 
 Examples:
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE
 "
 }
 

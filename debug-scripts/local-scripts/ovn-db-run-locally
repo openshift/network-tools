@@ -53,14 +53,13 @@ main() {
   COPIED_DB="/etc/ovn/copied_db"
   $CONTAINER_ENGINE cp "${DB_FILE}" $CONTAINER:$COPIED_DB
   FINAL_DB="/etc/ovn/ovn${DB_TYPE}b_db.db"
-  $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "ovsdb-tool db-is-clustered ${COPIED_DB}"
-  if [ $? -eq 0 ]; then
+  $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "ovsdb-tool db-is-clustered ${COPIED_DB}" && {
     echo "CLUSTERED DB, convert to standalone"
     $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "ovsdb-tool cluster-to-standalone ${FINAL_DB} ${COPIED_DB}"
-  else
+  } || {
     echo "NOT CLUSTERED DB"
     $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "cp ${COPIED_DB} ${FINAL_DB}"
-  fi
+  }
   $CONTAINER_ENGINE exec $CONTAINER /usr/share/ovn/scripts/ovn-ctl run_${DB_TYPE}b_ovsdb &
   # wait for ovndb status to become running, max waiting time 10 sec
 

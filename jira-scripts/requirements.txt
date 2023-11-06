@@ -1,0 +1,4 @@
+jira
+python-bugzilla
+python-dateutil
+tabulate

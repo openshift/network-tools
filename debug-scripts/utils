@@ -4,7 +4,7 @@ set -eo pipefail
 OVN_NAMESPACE="openshift-ovn-kubernetes"
 OVN_PLUGIN="OVNKubernetes"
 SDN_PLUGIN="OpenShiftSDN"
-NETWORK_TOOLS_IMAGE="quay.io/openshift/origin-network-tools:latest"
+NETWORK_TOOLS_IMAGE="--image-stream openshift/network-tools:latest"
 
 get_ovnk_leader_node () {
   n=$(oc -n ${OVN_NAMESPACE} get lease ovn-kubernetes-master -o jsonpath='{.spec.holderIdentity}' 2> /dev/null)
@@ -12,20 +12,48 @@ get_ovnk_leader_node () {
     oc get cm -n ${OVN_NAMESPACE} ovn-kubernetes-master -o jsonpath='{.metadata.annotations.control-plane\.alpha\.kubernetes\.io\/leader}' | \
       grep -Po '"holderIdentity":.*?[^\\]"' | awk -F':' '{print $2}' | sed 's/"//g'
   else
-    echo "$n"
+    # in 4.14 and newer releases, the holderIdentidy is a pod, not the host. try extracting host from pod, if that is the case
+    pod_host=$(oc -n ${OVN_NAMESPACE} get pod $n -o jsonpath='{.spec.nodeName}' 2> /dev/null)
+    if [ -n "$pod_host" ]; then
+      echo "$pod_host"
+    else
+      echo "$n"
+    fi
   fi
 }
 
 get_ovnk_leader_pod () {
   leader_host=$(get_ovnk_leader_node)
   [ -z "$leader_host" ] && { echo "not found"; exit 1; }
-  master_leader_pod="$(oc get pods -n $OVN_NAMESPACE --field-selector spec.nodeName=${leader_host} -l app=ovnkube-master -o=jsonpath='{.items..metadata.name}' \
+  # label for leader pod in 4.14 and newer releases is ovnkube-control-plane
+  master_leader_pod="$(oc get pods -n $OVN_NAMESPACE --field-selector spec.nodeName=${leader_host} -l 'app in (ovnkube-master,ovnkube-control-plane)' -o=jsonpath='{.items..metadata.name}' \
   || { echo "Can't get master leader pod on the node ${leader_host}" 1>&2; echo "not found"; exit 1; })"
   echo "${master_leader_pod}"
 }
 
 get_network_plugin () {
   oc get networks.config.openshift.io cluster -o 'jsonpath={.spec.networkType}'
+}
+
+function get_ovn_mode {
+  sample_node=$(oc get no -o jsonpath='{.items[0].metadata.name}')
+  sample_node_zone=$(oc get node "${sample_node}" -o jsonpath='{.metadata.annotations.k8s\.ovn\.org/zone-name}')
+  if [ "${sample_node}" = "${sample_node_zone}" ]; then
+    echo "ovn-ic"
+  else
+    echo "ovn-legacy"
+  fi
+}
+
+function get_ovn_controller_container_name {
+  OVN_CONTAINER="ovnkube-controller"
+  [ $(get_ovn_mode) == "ovn-ic" ] || OVN_CONTAINER="ovnkube-master"
+  echo ${OVN_CONTAINER}
+}
+
+get_ovndb_pods () {
+  NODE_PODS=$(oc -n ${OVN_NAMESPACE} get pods -l app=ovnkube-node -o=jsonpath='{.items[*].metadata.name}' || { echo "Can't get ovnkube-node pods" 1>&2; exit 1; })
+  echo ${NODE_PODS}
 }
 
 get_ovndb_leader_pod () {
@@ -35,14 +63,19 @@ get_ovndb_leader_pod () {
     s) DB="s"; DB_NAME="OVN_Southbound" ;;
     *) echo "Unrecognized ovn db type ${1}, choose one of n, s"; exit 1 ;;
   esac
-  MASTER_PODS=$(oc -n ${OVN_NAMESPACE} get pods -l app=ovnkube-master -o=jsonpath='{.items[*].metadata.name}' || { echo "Can't get ovnkube-master pods" 1>&2; exit 1; })
-  for MASTER_POD in ${MASTER_PODS}; do
-    RAFT_ROLE=$(oc exec -n ${OVN_NAMESPACE} "${MASTER_POD}" -c ${DB}bdb -- bash -c "ovn-appctl -t /var/run/ovn/ovn${DB}b_db.ctl cluster/status ${DB_NAME} 2>&1 | grep \"^Role\"")
-    if echo "${RAFT_ROLE}" | grep -q -i leader; then
-      LEADER=$MASTER_POD
-      break
-    fi
-  done
+  # in ovn-ic, there is no ovndb_leader
+  if [ $(get_ovn_mode) == "ovn-legacy" ]; then
+    MASTER_PODS=$(oc -n ${OVN_NAMESPACE} get pods -l app=ovnkube-master -o=jsonpath='{.items[*].metadata.name}' || { echo "Can't get ovnkube-master pods" 1>&2; exit 1; })
+    for MASTER_POD in ${MASTER_PODS}; do
+      RAFT_ROLE=$(oc exec -n ${OVN_NAMESPACE} "${MASTER_POD}" -c ${DB}bdb -- bash -c "ovn-appctl -t /var/run/ovn/ovn${DB}b_db.ctl cluster/status ${DB_NAME} 2>&1 | grep \"^Role\"")
+      if echo "${RAFT_ROLE}" | grep -q -i leader; then
+        LEADER=$MASTER_POD
+        break
+      fi
+    done
+  else
+    LEADER="not applicable in ovn-ic mode"
+  fi
   echo "${LEADER}"
 }
 
@@ -116,7 +149,7 @@ To run commands for pod netnamespace use
 
 nsenter -n -t $ns_pid <command>
 "
-      oc debug node/"$node_name" --image=$NETWORK_TOOLS_IMAGE
+      oc debug node/"$node_name" $NETWORK_TOOLS_IMAGE
     else
       echo
       echo "INFO: Running $command in the netns of pod $pod"
@@ -124,7 +157,7 @@ nsenter -n -t $ns_pid <command>
       if [ -n "$SLEEP" ]; then
         FULL_COMMAND="($FULL_COMMAND) $SLEEP"
       fi
-      oc debug node/"$node_name" --image=$NETWORK_TOOLS_IMAGE -- bash -c "$FULL_COMMAND"
+      oc debug node/"$node_name" $NETWORK_TOOLS_IMAGE -- bash -c "$FULL_COMMAND"
     fi
 }
 

@@ -4,33 +4,60 @@ set -euo pipefail
 source ./utils
 
 description() {
-  echo "Collect OVN networking metrics: master, node, and ovn"
+  echo "Collect OVN networking metrics: control-plane, node, and ovn"
 }
 
 help () {
-  echo "This script collects OVN networking metrics: master, node, and ovn.
+  echo "This script collects OVN networking metrics: control-plane, node, and ovn.
+Metrics will be collected from leader host, unless a node is provided.
 If output folder is not specified, local path will be used.
 
-Usage: $USAGE [output_folder]
+Usage: $USAGE [-n node] [output_folder]
 
 Examples:
   $USAGE
+  $USAGE -n node_name
+  $USAGE --node node_name /some/path/metrics
   $USAGE /some/path/metrics
 
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE /must-gather
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE /must-gather
 "
 }
 
 main() {
   dir=$(ensure_output_dir "${1:-}")
   echo "Output directory ${dir}"
-  leader_host="$(get_ovnk_leader_node)"
-  master_leader_pod="$(get_ovnk_leader_pod)"
-  oc -n "$OVN_NAMESPACE" exec "$master_leader_pod" -c ovnkube-master -- curl "127.0.0.1:29102/metrics" > "$dir/$master_leader_pod-29102(master)"
-  node_pod="$(oc get pods -n $OVN_NAMESPACE --field-selector spec.nodeName=$leader_host -l app=ovnkube-node -o=jsonpath='{.items..metadata.name}')"
-  oc -n "$OVN_NAMESPACE" exec "$node_pod" -c ovnkube-node -- curl "127.0.0.1:29103/metrics" > "$dir/$node_pod-29103(node)"
-  oc -n "$OVN_NAMESPACE" exec "$node_pod" -c ovnkube-node -- curl "127.0.0.1:29105/metrics" > "$dir/$node_pod-29105(ovn)"
+  if [ -n "${node_name}" ]; then
+    # Validate node name provided
+    oc get node $node_name -o name 2>/dev/null || { echo "Can't get node ${node_name}" 1>&2; exit 1; }
+  else
+    node_name="$(get_ovnk_leader_node)"
+  fi
+  # Find out if there is a control/master pod running in the provided node. Leader/control-plane nodes will have one.
+  node_control_pod="$(oc get pods -n $OVN_NAMESPACE --field-selector spec.nodeName=${node_name} -l 'app in (ovnkube-master,ovnkube-control-plane)' -o=jsonpath='{.items..metadata.name}')"
+  node_pod="$(oc get pods -n $OVN_NAMESPACE --field-selector spec.nodeName=$node_name -l app=ovnkube-node -o=jsonpath='{.items..metadata.name}')"
+  OVN_CTL_CONTAINER="$(get_ovn_controller_container_name)"
+  if [ $(get_ovn_mode) == "ovn-ic" ]; then
+    [ -n "${node_control_pod}" ] && \
+      oc -n "$OVN_NAMESPACE" exec "$node_control_pod" -c ovnkube-cluster-manager -- curl "127.0.0.1:29108/metrics" > "$dir/$node_control_pod-29108(control-plane)"
+    oc -n "$OVN_NAMESPACE" exec "$node_pod" -c "$OVN_CTL_CONTAINER" -- curl "127.0.0.1:29103/metrics" > "$dir/$node_pod-29103(node)"
+    oc -n "$OVN_NAMESPACE" exec "$node_pod" -c "$OVN_CTL_CONTAINER" -- curl "127.0.0.1:29105/metrics" > "$dir/$node_pod-29105(ovn)"
+  else
+    [ -n "${node_control_pod}" ] && \
+      oc -n "$OVN_NAMESPACE" exec "$node_control_pod" -c "$OVN_CTL_CONTAINER" -- curl "127.0.0.1:29102/metrics" > "$dir/$node_control_pod-29102(master)"
+    oc -n "$OVN_NAMESPACE" exec "$node_pod" -c ovnkube-node -- curl "127.0.0.1:29103/metrics" > "$dir/$node_pod-29103(node)"
+    oc -n "$OVN_NAMESPACE" exec "$node_pod" -c ovnkube-node -- curl "127.0.0.1:29105/metrics" > "$dir/$node_pod-29105(ovn)"
+  fi
 }
+
+node_name=""
+case "${1:-}" in
+  -n|--node)
+    node_name="$2"
+    shift 2
+    ;;
+  *) ;;
+esac
 
 case "${1:-}" in
   description) description ;;

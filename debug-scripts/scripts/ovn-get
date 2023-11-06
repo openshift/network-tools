@@ -15,17 +15,65 @@ Supported object:
   leaders - prints ovnk master leader pod, nbdb and sbdb leader pods
   dbs [output directory] - downloads nbdb and sbdb for every master pod. [output directory] is optional for local usage
       and should be omitted for must-gather
+  mode - prints out whether ovn cluster is running as single zone (legacy) or multi-zone (ovn-ic)
 
 Examples:
   $USAGE leaders
   $USAGE dbs ./dbs
+  $USAGE mode
 
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE leaders
-  oc adm must-gather --image=$NETWORK_TOOLS_IMAGE -- $USAGE dbs
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE leaders
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE dbs
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE mode
 "
 }
 
 copy_ovn_dbs() {
+  if [ $(get_ovn_mode) == "ovn-legacy" ]; then
+    copy_ovn_dbs_legacy_mode $@
+  else
+    copy_ovn_dbs_interconnect_mode $@
+  fi
+}
+
+function copy_ovn_dbs_interconnect_mode {
+  if [ -n "${POD_NAME:-}" ]; then
+#    script is run with must-gather
+    dir="/must-gather"
+  else
+    dir=$(ensure_output_dir "${1:-}")
+  fi
+  echo "Output directory ${dir}"
+#  next command will return an error, but this is expected, ignore error
+  set +e
+  output=$(oc cp --retries=5 2>&1)
+  if [[ "$output" == *"unknown flag"* ]]; then
+    flags=""
+  else
+    flags="--retries=5"
+  fi
+#  no more errors are expected
+  set -e
+  OVNKUBE_CONTROLLER_PODS=($(oc -n openshift-ovn-kubernetes get pods -l app=ovnkube-node -o=jsonpath='{.items[*].metadata.name}'))
+  # collect dbs from each node
+  for DB in "n" "s"; do
+    if [ "$DB" = "n" ]; then
+      DB_NAME="OVN_Northbound"
+      CONTAINER="nbdb"
+    else
+      DB_NAME="OVN_Southbound"
+      CONTAINER="sbdb"
+    fi
+    for OVNKUBE_CONTROLLER_POD in "${OVNKUBE_CONTROLLER_PODS[@]}"; do
+      echo "Gathering "${DB_NAME}" from "${OVNKUBE_CONTROLLER_POD}
+      OUTPUT=$(oc cp $flags openshift-ovn-kubernetes/"${OVNKUBE_CONTROLLER_POD}":/etc/ovn/ovn"${DB}"b_db.db -c "${CONTAINER}" \
+               "${dir}/${OVNKUBE_CONTROLLER_POD}_${DB}bdb" 2>&1)
+      [ "$OUTPUT" == "tar: Removing leading \`/' from member names" ] || echo $OUTPUT
+    done
+  done
+}
+
+copy_ovn_dbs_legacy_mode() {
   if [ -n "${POD_NAME:-}" ]; then
 #    script is run with must-gather
     dir="/must-gather"
@@ -57,10 +105,20 @@ get_dbs_leader() {
   echo "sbdb leader $(get_ovndb_leader_pod s)"
 }
 
+show_ovn_mode() {
+  echo -n cluster is running in
+  if [ $(get_ovn_mode) == "ovn-legacy" ]; then
+    echo " single-zone (legacy)"
+  else
+    echo " multi-zone (ovn-interconnect / ovn-ic)"
+  fi
+}
+
 main() {
   case $1 in
     leaders) get_dbs_leader ;;
     dbs) copy_ovn_dbs "${@:2}" ;;
+    mode) show_ovn_mode ;;
     *) echo "Unknown object \"$1\", use -h to see supported objects"; exit 1 ;;
   esac
 }
