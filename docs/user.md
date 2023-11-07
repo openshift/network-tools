@@ -218,35 +218,6 @@ Options:
  The script will detect the metrics dump and automatically convert it to openmentrics format
 
 ```
-* `network-tools ovn-metrics-dump`
-
-```
-This script collects user specified prometheus metrics and converts the output
-to openmetrics format so it can be imported into another prometheus instance with
-'promtool tsdb create-blocks-from openmetrics <openmetrics file>'
-See https://access.redhat.com/solutions/5482971 to install prometheus.
-
-Usage: network-tools ovn-metrics-dump --inputfile=<filename> [options]
-
-Options:
-  -i|--inputfile    = a text file with metric names; only required parameter
-  -o|--outputfile   = destination file for the promql query results
-  -t|--time_parameters= a time range like [5m] or [1d] or combine with offset: -t='[10m] offset 1d'. 
-     See https://prometheus.io/docs/prometheus/latest/querying/basics/#time-durations
-  -v|--verbose      = see the ressults of the promql queries and the openmetrics conversion on the console
-  -u|--uncompressed = the resulting openmetrics file is not compressed with gzip; default is to compress.  
-  -c|--convert      = convert metrics dump to openmetrics format for import into local prometheus DB; default is not to.  
-
- Examples: network-tools ovn-metrics-dump -i=~/mymetrics.txt -t=[10m] 
-           network-tools ovn-metrics-dump --inputfile=~/mymetrics.txt --outputfile=~/mymetrics.output --verbose
-           network-tools ovn-metrics-dump --inputfile=~/mymetrics.txt --o=~/mymetrics.output -t='[5m] offset 1d'
-
- To convert an existing metrics dump to openmetrics format, simply use the metrics dump as the input file.  
- The script will detect the metrics dump and automatically convert it to openmentrics format
-
- Example: network-tools ovn-metrics-dump -i =~/mydumpedmetrics.out 
-
-```
 * `network-tools ovn-metrics-list`
 
 ```
