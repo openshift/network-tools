@@ -563,6 +563,16 @@ Points are calculated according to bug priority:
     print(explanation_message)
 
 
+def print_unassigned_bugs():
+    print("Current new bugs:")
+    unassigned_bugs = retrieve_unassigned_jira_bugs()
+    print()
+    for bug in unassigned_bugs:
+        bug_url = get_jira_issue_url(bug)
+        bug_summary = bug.get_field("summary")
+        print(f"- [{bug}]({bug_url}) - {bug_summary}")
+
+
 def parse_input_args():
     parser = argparse.ArgumentParser()
     default_str = " By default, when no bug type is specified as input arg, jira bugs are fetched, but not jira escalations."
@@ -589,6 +599,13 @@ def parse_input_args():
         help="Skip assign analysis and get results more quickly",
         action="store_true"
     )
+
+    parser.add_argument(
+        "-n", "--new-bugs",
+        help="Print currently unassigned bugs in a markup format",
+        action="store_true"
+    )
+
     parser.add_argument(
         "--old-bugs",
         help=(
@@ -603,20 +620,23 @@ def parse_input_args():
     # By default jira bugs are queried and parsed. Jira escalations are not.
     # However, as soon as issue types are explicitly specified as input parameters,
     # only those that are specified are queried.
-    jira_bugs = jira_escalations = False
-    if args.jira_bugs or args.jira_escalations:
-        jira_bugs = bool(args.jira_bugs)
+    jira_bugs = jira_escalations = new_bugs = False
+    if args.jira_bugs or args.jira_escalations or args.new_bugs or args.quick:
+        jira_bugs = bool(args.jira_bugs) or bool(args.quick)
         jira_escalations = bool(args.jira_escalations)
+        new_bugs = bool(args.new_bugs)
     else:
+        # Default values when no args are specified
         jira_bugs = True
         jira_escalations = False
-
+        new_bugs = True
     params = {
         "jira_bugs": jira_bugs,
         "jira_escalations": jira_escalations,
         "old-bugs": bool(args.old_bugs),
         "verbose": bool(args.verbose),
-        "quick": bool(args.quick)
+        "quick": bool(args.quick),
+        "new_bugs": new_bugs,
     }
 
     return params
@@ -624,24 +644,27 @@ def parse_input_args():
 
 def main():
     params = parse_input_args()
-    developers = init_developers_dict()
-    bugs_dict = run_queries(
-        jira_bugs=params.get("jira_bugs"),
-        jira_escalations=params.get("jira_escalations"),
-    )
-    developers, stale_bugs = process_bugs(bugs_dict, developers, params.get("quick"))
-    if params.get("verbose"):
-        print_results(developers,
-                      stale_bugs,
-                      print_stale_bugs=params.get("old-bugs"),
-                      quick=params.get("quick"))
-        print_summary_table(developers, params.get("quick"))
-    else:
-        print_summary_table(developers, params.get("quick"))
 
-    print("Notes:")
-    for bug in retrieve_unassigned_jira_bugs():
-        print("- [{0}](https://issues.redhat.com/browse/{0}) - {1}  ".format(bug, bug.get_field("summary")))
+
+    if params.get("jira_bugs") or params.get("jira_escalations"):
+        developers = init_developers_dict()
+        bugs_dict = run_queries(
+            jira_bugs=params.get("jira_bugs"),
+            jira_escalations=params.get("jira_escalations"),
+        )
+        developers, stale_bugs = process_bugs(bugs_dict, developers, params.get("quick"))
+        if params.get("verbose"):
+            print_results(developers,
+                          stale_bugs,
+                          print_stale_bugs=params.get("old-bugs"),
+                          quick=params.get("quick"))
+            print_summary_table(developers, params.get("quick"))
+        else:
+            print_summary_table(developers, params.get("quick"))
+
+    if params.get("new_bugs"):
+        print_unassigned_bugs()
+
 
 if __name__ == "__main__":
     main()
