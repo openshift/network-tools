@@ -326,12 +326,13 @@ def count_recently_assigned_bugs(dev_name):
 def init_queries(clients, jira_bugs=True, jira_escalations=False):
     query_dict = {}
     if jira_bugs:
-        query = init_jira_query_for_bugs()
-        query_dict[JIRA_BUGS] = {"query": query}
+        query_dict[JIRA_BUGS] = {
+            "queries": [init_jira_query_for_bugs(),
+                        get_query_for_unresolved_jira_stories_tracking_github_issues()]
+        }
 
     if jira_escalations:
-        query = init_jira_query_for_escalations()
-        query_dict[JIRA_ESCALATIONS] = {"query": query}
+        query_dict[JIRA_ESCALATIONS] = {"queries": [init_jira_query_for_escalations()]}
 
     return query_dict
 
@@ -472,16 +473,17 @@ def run_queries(jira_bugs=True, jira_escalations=False):
 
     # run the queries and store the results in the per-backend dictionary
     if jira_bugs:
-        query_str = query_dict[JIRA_BUGS]["query"]
-        query_dict[JIRA_BUGS]["bugs"] = run_jira_query(clients[JIRA_KEY], query_str)
+        query_dict[JIRA_BUGS]["bugs"] = []
+        for query in query_dict[JIRA_BUGS]["queries"]:
+            query_dict[JIRA_BUGS]["bugs"] += run_jira_query(clients[JIRA_KEY], query)
 
     if jira_escalations:
-        query_str = query_dict[JIRA_ESCALATIONS]["query"]
-        query_dict[JIRA_ESCALATIONS]["bugs"] = run_jira_query(
-            clients[JIRA_KEY], query_str
-        )
+        query_dict[JIRA_ESCALATIONS]["bugs"] = []
+        for query in query_dict[JIRA_ESCALATIONS]["queries"]:
+            query_dict[JIRA_ESCALATIONS]["bugs"] += run_jira_query(clients[JIRA_KEY], query)
 
     return query_dict
+
 
 def was_jira_bug_recently_assigned(bug):
     # Evaluate whether the bug
