@@ -39,14 +39,18 @@ ALIASES_TO_USERNAMES = {
     "surya": "sseethar",
 }
 
-# arbitrary numbers to weight severity, 10 is max and 1 is low
-SEVERITY_WEIGHTS = {
-    "critical": 10,
-    "important": 5,
-    "moderate": 3,
-    "informational": 1,
-    None: 1,
-}
+# We're not using severity anymore when estimating workload, let's just keep the
+# following as comment for future reference if ever we need to use it again.
+# SEVERITY_JIRA_FIELD = "customfield_12316142"  # in OCPBUGS
+
+# # arbitrary numbers to weight severity, 10 is max and 1 is low
+# SEVERITY_WEIGHTS = {
+#     "critical": 10,
+#     "important": 5,
+#     "moderate": 3,
+#     "informational": 1,
+#     None: 1,
+# }
 
 # arbitrary numbers to weight priority, 100 is max and 1 is low
 PRIORITY_WEIGHTS = {
@@ -350,22 +354,6 @@ def process_jira_bugs(bugs, developers, quick=False):
         ]  # TODO maybe just take the 0th element...
         url = "https://issues.redhat.com/browse/" + str(bug_key)
         priority = bug.get_field("priority").name.lower()
-        severity = None
-        # TODO not sure today what escalated jira issues in OCPBUGS project
-        # will look like. For now OCPBUGS escalations are not taken into account.
-        # escalations have no severity field
-        if ESCALATIONS_COMPONENT not in components:
-            try:
-                severity = bug.get_field("customfield_12316142")
-                if severity is not None:
-                    severity = severity.value.lower()
-
-            except Exception as e:
-                print("Could not correctly retrieve severity for bug {},"
-                      " considering it as 'unspecified'. Error: {}, severity: {}".format(
-                          bug, e, severity))
-                severity = 'unspecified'
-
         # an assignee in jira bugs is very often a developer's official email address, but
         # it might also be just a username.
         if assignee_mail not in developers:
