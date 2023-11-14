@@ -83,6 +83,10 @@ TEAM_COMPONENTS = (GENERIC_COMPONENT, SDN_COMPONENT, OVN_COMPONENT, CNCC_COMPONE
 ASSIGN_WINDOW_DAYS = 21  # 3 weeks in a sprint
 
 
+def get_jira_issue_url(jira_issue):
+    return f"https://issues.redhat.com/browse/{jira_issue.key}"
+
+
 def init_developers_dict():
     developers = dict(
         [
@@ -121,7 +125,7 @@ def retrieve_unassigned_jira_bugs():
 def retrieve_jira_bugs_for_given_dev(dev_name):
     clients = init_clients(jira_=True)
     query = init_jira_query_for_one_assignee(dev_name)
-    bugs = run_jira_query(clients[JIRA_KEY], query)
+    bugs = run_jira_query(clients[JIRA_KEY], query, expand_changelog=True)
     return bugs
 
 
@@ -156,7 +160,7 @@ def init_clients(jira_=True):
 
 def init_jira_query_for_bugs(open_only=True):
     project = "OCPBUGS"
-    return init_jira_query(project, TEAM_COMPONENTS, open_only)
+    return init_jira_query(project, TEAM_COMPONENTS, open_only=open_only)
 
 
 def init_jira_query_for_escalations():
@@ -209,7 +213,7 @@ def init_jira_query_for_one_assignee(assignee):
     alias, email_alias = get_alias_and_email_alias_from_username(assignee)
     all_usernames = [x for x in [username, usermail, alias, email_alias] if x]
     assignee_tpl = 'assignee in ({}) and '
-    assignee_values = ', '.join('"{}"'.format(u) for u in all_usernames)  # (enclose within quotes)
+    assignee_values = ', '.join(f'"{u}"' for u in all_usernames)  # (enclose within quotes)
     query = assignee_tpl.format(assignee_values) + init_jira_query_for_bugs(open_only=False)
     return query
 
@@ -224,15 +228,15 @@ def init_jira_query(project, components, open_only=True):
         # modified, release_pending, closed
         query_fmt += ' and status in ("NEW", "ASSIGNED", "POST", "ON_DEV")'
 
-    component_substr = ", ".join(('"{}"'.format(c) for c in components))
+    component_substr = ", ".join((f'"{c}"' for c in components))
     bugs_query = query_fmt.format(project, component_substr)
     return bugs_query
 
 
 def time_query(func):
-    def wrapper(platform_api, query_str):
+    def wrapper(platform_api, query_str, **kwargs):
         t_start = time.time()
-        bugs = func(platform_api, query_str)
+        bugs = func(platform_api, query_str, **kwargs)
         t_end = time.time()
         print("- Found {} bugs in {:.1f}s with the query: {}".format(
             len(bugs), t_end - t_start, query_str))
@@ -242,24 +246,28 @@ def time_query(func):
 
 
 @time_query
-def run_jira_query(jira_api, query):
+def run_jira_query(jira_api, query, expand_changelog=False):
     res = []
-    # jira server is highly unreliable
+    expand_value = None
+    if expand_changelog:
+        expand_value = "changelog"
+    # Our jira server is highly unreliable
     # try querying it 100 times and then give up
     max_attempts = 100
     for i in range(max_attempts):
         try:
-            res = jira_api.search_issues(query, maxResults=False, expand="changelog")
-        except:
-            # print("[attempt {}] Error running JIRA query {}, error: {}".format(i, query, e))
+            res = jira_api.search_issues(query, expand=expand_value, maxResults=False)
+        except Exception as ex:
+            # print("[attempt {}] Error running JIRA query {}, error: {}".format(
+            #     i, query, ex))
             sys.stdout.write(".")
             sys.stdout.flush()
             time.sleep(0.05)
             if i == max_attempts-1:
-                sys.exit("Failed to query JIRA server {} times. Query: {}".format(
-                    max_attempts, query))
+                sys.exit(f"Failed to query JIRA server {max_attempts} times. "
+                         f"Query: {query}; Error: {ex}")
         else:
-            print("JIRA query successful at attempt={}".format(i))
+            # print("JIRA query successful at attempt={}".format(i))
             break
     return res
 
@@ -328,7 +336,7 @@ def was_jira_bug_recently_assigned(bug):
         return days_difference <= ASSIGN_WINDOW_DAYS
 
     except Exception as ex:
-        print("could not evaluate changelog for {}: {}".format(bug, ex))
+        print(f"could not evaluate changelog for {bug}: {ex}")
 
     return False
 
@@ -347,12 +355,11 @@ def process_jira_bugs(bugs, developers, quick=False):
         bug_id = str(bug.key)
         creation_time = bug.get_field("created")
         summary = bug.get_field("summary")
-        bug_key = str(bug.key)
         components = [c.name.lower() for c in bug.get_field("components")]
         fix_versions = [
             v.name for v in bug.get_field("fixVersions")
         ]  # TODO maybe just take the 0th element...
-        url = "https://issues.redhat.com/browse/" + str(bug_key)
+        url = get_jira_issue_url(bug)
         priority = bug.get_field("priority").name.lower()
         # an assignee in jira bugs is very often a developer's official email address, but
         # it might also be just a username.
