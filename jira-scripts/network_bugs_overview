@@ -7,11 +7,9 @@ import sys
 from tabulate import tabulate
 import time
 
-import bugzilla
 from dateutil import parser
 from jira.client import JIRA
 from jira_secrets import secrets
-import re
 
 class colors:
     HEADER = "\033[93m"
@@ -43,12 +41,7 @@ ALIASES_TO_USERNAMES = {
 
 # arbitrary numbers to weight severity, 10 is max and 1 is low
 SEVERITY_WEIGHTS = {
-    "urgent": 10,  # bugzilla
-    "high": 5,
-    "medium": 3,
-    "low": 1,
-    "unspecified": 1,
-    "critical": 10,  # jira
+    "critical": 10,
     "important": 5,
     "moderate": 3,
     "informational": 1,
@@ -57,12 +50,7 @@ SEVERITY_WEIGHTS = {
 
 # arbitrary numbers to weight priority, 100 is max and 1 is low
 PRIORITY_WEIGHTS = {
-    "urgent": 100,  # bugzilla
-    "high": 30,
-    "medium": 10,
-    "low": 5,
-    "unspecified": 1,
-    "blocker": 10000,  # jira
+    "blocker": 10000,
     "critical": 1000,
     "major": 100,
     "normal": 10,
@@ -74,9 +62,7 @@ PRIORITY_WEIGHTS = {
 # arbitrary, a bug is considered "stale" if it has been in the NEW status for more than 30 days
 STALE_THRESHOLD = 30
 
-BZ_KEY = "bugzilla"
 JIRA_KEY = "jira"
-BZ_BUGS = "bugzilla"
 JIRA_BUGS = "jira_bugs"
 JIRA_ESCALATIONS = "jira_escalations"
 
@@ -119,7 +105,7 @@ def init_developers_dict():
 
 
 def retrieve_unassigned_jira_bugs():
-    clients = init_clients(bz=False, jira_=True)
+    clients = init_clients(jira_=True)
     query = '(filter in ("SDN BZ filter", "SDN OCPBUGS") OR project = RHOCPPRIO AND component in ("networking/sdn") ' \
             'OR project = SDN AND issuetype = Bug) AND filter in (Unresolved) AND ((project = OCPBUGSM OR project = ' \
             'OCPBUGS) AND assignee = "bbennett@redhat.com" OR project = RHOCPPRIO AND assignee in (' \
@@ -129,7 +115,7 @@ def retrieve_unassigned_jira_bugs():
 
 
 def retrieve_jira_bugs_for_given_dev(dev_name):
-    clients = init_clients(bz=False, jira_=True)
+    clients = init_clients(jira_=True)
     query = init_jira_query_for_one_assignee(dev_name)
     bugs = run_jira_query(clients[JIRA_KEY], query)
     return bugs
@@ -140,12 +126,8 @@ def count_recently_assigned_bugs(dev_name):
     return sum(was_jira_bug_recently_assigned(b) for b in bugs)
 
 
-def init_queries(clients, bz=True, jira_bugs=True, jira_escalations=False):
+def init_queries(clients, jira_bugs=True, jira_escalations=False):
     query_dict = {}
-    if bz and clients.get(BZ_KEY):
-        query = init_bz_query(clients[BZ_KEY])
-        query_dict[BZ_BUGS] = {"query": query}
-
     if jira_bugs:
         query = init_jira_query_for_bugs()
         query_dict[JIRA_BUGS] = {"query": query}
@@ -157,47 +139,15 @@ def init_queries(clients, bz=True, jira_bugs=True, jira_escalations=False):
     return query_dict
 
 
-def init_bz():
-    URL = "bugzilla.redhat.com"
-    return bugzilla.Bugzilla(URL)
-
-
 def init_jira():
     return JIRA("https://issues.redhat.com", token_auth=secrets["token"], kerberos=True)
 
 
-def init_clients(bz=True, jira_=True):
+def init_clients(jira_=True):
     clients = {
-        BZ_KEY: init_bz() if bz else None,
         JIRA_KEY: init_jira() if jira_ else None,
     }
     return clients
-
-
-def init_bz_query(bzapi):
-    query = bzapi.build_query(
-        product="OpenShift Container Platform",
-        component="Networking",
-        include_fields=[
-            "id",
-            "priority",
-            "severity",
-            "assigned_to",
-            "creation_time",
-            "component",
-            "sub_component",
-            "target_release",
-            "summary",
-            "status",
-            "cf_cust_facing",
-        ],
-    )
-    query["bug_status"] = ["ASSIGNED", "NEW", "POST"]
-
-    # Bugzilla has a limit max of return, setting no limit
-    query["limit"] = 0
-
-    return query
 
 
 def init_jira_query_for_bugs(open_only=True):
@@ -276,25 +226,15 @@ def init_jira_query(project, components, open_only=True):
 
 
 def time_query(func):
-    def wrapper(bz_api, query_str):
+    def wrapper(platform_api, query_str):
         t_start = time.time()
-        bugs = func(bz_api, query_str)
+        bugs = func(platform_api, query_str)
         t_end = time.time()
         print("- Found {} bugs in {:.1f}s with the query: {}".format(
             len(bugs), t_end - t_start, query_str))
         return bugs
 
     return wrapper
-
-
-@time_query
-def run_bz_query(bz_api, query_str):
-    res = []
-    try:
-        res = bz_api.query(query_str)
-    except Exception as e:
-        print("Error running BUGZILLA query {}, error: {}".format(query_str, e))
-    return res
 
 
 @time_query
@@ -320,20 +260,16 @@ def run_jira_query(jira_api, query):
     return res
 
 
-def run_queries(bz=True, jira_bugs=True, jira_escalations=False):
-    # initialize bugzilla and jira clients
-    clients = init_clients(bz=bz, jira_=(jira_bugs or jira_escalations))
+def run_queries(jira_bugs=True, jira_escalations=False):
+    # initialize jira client
+    clients = init_clients(jira_=(jira_bugs or jira_escalations))
 
     # prepare the queries
     query_dict = init_queries(
-        clients, bz=bz, jira_bugs=jira_bugs, jira_escalations=jira_escalations
+        clients, jira_bugs=jira_bugs, jira_escalations=jira_escalations
     )
 
     # run the queries and store the results in the per-backend dictionary
-    if bz:
-        query_str = query_dict[BZ_BUGS]["query"]
-        query_dict[BZ_BUGS]["bugs"] = run_bz_query(clients[BZ_KEY], query_str)
-
     if jira_bugs:
         query_str = query_dict[JIRA_BUGS]["query"]
         query_dict[JIRA_BUGS]["bugs"] = run_jira_query(clients[JIRA_KEY], query_str)
@@ -345,66 +281,6 @@ def run_queries(bz=True, jira_bugs=True, jira_escalations=False):
         )
 
     return query_dict
-
-
-# takes a list of bugs as output by run_query and a developers dict as output
-# by init_developers and returns a developers dict filled in with updated parameters
-def process_bz_bugs(bugs, developers):
-    # bugs that have been in new state for more than 30 days (arbitary time window)
-    stale_bugs = {}
-    for bug in bugs:
-        assignee_user, assignee_mail = get_username_and_usermail_from_assignee(bug.assigned_to)
-
-        if assignee_mail not in developers:
-            # check if it's a known alias and if so, get the official username
-            tmp_assignee, tmp_email = get_username_and_usermail_from_alias(assignee_user)
-            if tmp_email and tmp_email in developers:
-                assignee_user, assignee_mail = tmp_assignee, tmp_email
-            else:
-                # no valid assignee found, skip this bug
-                continue
-
-        if bug.status == "NEW":
-            developers[assignee_mail]["bugs_in_new"] += 1
-
-            # Bugs in NEW state for more than 30 days
-            creation_time = datetime.strptime(str(bug.creation_time), "%Y%m%dT%H:%M:%S")
-            if (creation_time + timedelta(days=STALE_THRESHOLD)) <= datetime.now():
-                stale_bugs[bug.id] = {
-                    "summary": bug.summary,
-                    "url": "https://bugzilla.redhat.com/show_bug.cgi?id=" + str(bug.id),
-                    "creation_date": creation_time,
-                    "status": bug.status,
-                    "component": bug.component,
-                    "target_release": bug.target_release,
-                    "sub_component": bug.sub_component,
-                }
-
-        elif bug.status == "ASSIGNED":
-            developers[assignee_mail]["bugs_in_assigned"] += 1
-        elif bug.status == "POST":
-            developers[assignee_mail]["bugs_in_post"] += 1
-
-        developers[assignee_mail]["number_of_bugs"] += 1
-
-        if bug.sub_component == "ovn-kubernetes":
-            developers[assignee_mail]["number_of_ovnk_bugs"] += 1
-        elif bug.sub_component == "openshift-sdn":
-            developers[assignee_mail]["number_of_osdn_bugs"] += 1
-        else:
-            developers[assignee_mail]["number_of_other_bugs"] += 1
-
-        if bug.cf_cust_facing.lower() == "yes":
-            developers[assignee_mail]["number_of_escalations"] += 1
-
-        developers[assignee_mail]["bugs_urls"].append(
-            "https://bugzilla.redhat.com/show_bug.cgi?id=" + str(bug.id)
-        )
-        developers[assignee_mail]["points"] += (
-            SEVERITY_WEIGHTS[bug.severity] + PRIORITY_WEIGHTS[bug.priority]
-        )
-    return developers, stale_bugs
-
 
 def was_jira_bug_recently_assigned(bug):
     # Evaluate whether the bug
@@ -491,7 +367,7 @@ def process_jira_bugs(bugs, developers, quick=False):
                 severity = 'unspecified'
 
         # an assignee in jira bugs is very often a developer's official email address, but
-        # it might also be just a username. On BZ aliases are the primary choice.
+        # it might also be just a username.
         if assignee_mail not in developers:
             # check if it's a known alias
             tmp_assignee, tmp_email = get_username_and_usermail_from_alias(assignee_user)
@@ -550,11 +426,6 @@ def process_jira_bugs(bugs, developers, quick=False):
 
 def process_bugs(bugs_dict, developers, quick=False):
     stale_bugs = {}
-    if BZ_BUGS in bugs_dict:
-        bugs = bugs_dict[BZ_BUGS]["bugs"]
-        developers, stale_bugs_bz = process_bz_bugs(bugs, developers)
-        stale_bugs.update(stale_bugs_bz)
-
     if JIRA_BUGS in bugs_dict:
         bugs = bugs_dict[JIRA_BUGS]["bugs"]
         developers, stale_bugs_jira = process_jira_bugs(bugs, developers, quick)
@@ -629,7 +500,7 @@ def print_results(developers, stale_bugs, print_stale_bugs=False, quick=False):
         print("  Bug URLs:    {}".format(v["bugs_urls"]))
         print("")
 
-    print(colors.HEADER + "\nBugzilla status explained:" + colors.END)
+    print(colors.HEADER + "\nBug status explained:" + colors.END)
     print(colors.BOLD + "=============================" + colors.END)
     print(" - NEW: Bug need to be triaged or work not started.")
     print(" - ASSIGNED: Bug has been triaged and developer started working.\n")
@@ -641,7 +512,7 @@ def print_results(developers, stale_bugs, print_stale_bugs=False, quick=False):
         " - MODIFIED: patch has being commited upstream/downstream, developers are all set."
     )
     print(
-        "   Usually ERRATA system moves to ON_QA as soon the Bugzilla report",
+        "   Usually ERRATA system moves to ON_QA as soon the bug report",
         "is attached to an Errata ticket.\n",
     )
 
@@ -699,11 +570,7 @@ Points are calculated according to bug priority:
 
 def parse_input_args():
     parser = argparse.ArgumentParser()
-    default_str = " By default, when no bug type is specified as input arg, bz and jira bugs are fetched, but not jira escalations."
-    parser.add_argument(
-        "--bz", help=("run a query to bugzilla." + default_str), action="store_true"
-    )
-
+    default_str = " By default, when no bug type is specified as input arg, jira bugs are fetched, but not jira escalations."
     parser.add_argument(
         "--jira-bugs",
         help=("run a query to jira server for jira bugs." + default_str),
@@ -738,20 +605,18 @@ def parse_input_args():
 
     args = parser.parse_args()
 
-    # By default bz, jira bugs are queried and parsed. Jira escalations are not.
+    # By default jira bugs are queried and parsed. Jira escalations are not.
     # However, as soon as issue types are explicitly specified as input parameters,
     # only those that are specified are queried.
-    bz = jira_bugs = jira_escalations = False
-    if args.bz or args.jira_bugs or args.jira_escalations:
-        bz = bool(args.bz)
+    jira_bugs = jira_escalations = False
+    if args.jira_bugs or args.jira_escalations:
         jira_bugs = bool(args.jira_bugs)
         jira_escalations = bool(args.jira_escalations)
     else:
-        bz = jira_bugs = True
+        jira_bugs = True
         jira_escalations = False
 
     params = {
-        "bz": bz,
         "jira_bugs": jira_bugs,
         "jira_escalations": jira_escalations,
         "old-bugs": bool(args.old_bugs),
@@ -766,7 +631,6 @@ def main():
     params = parse_input_args()
     developers = init_developers_dict()
     bugs_dict = run_queries(
-        bz=params.get("bz"),
         jira_bugs=params.get("jira_bugs"),
         jira_escalations=params.get("jira_escalations"),
     )
