@@ -52,7 +52,7 @@ GITHUB_TO_JIRA_USERS = {
     "pperiyasamy": "pepalani",
     "ricky-rav": "rravaiol",
     "tssurya": "sseethar",
-    "trozet": "trozet"
+    "trozet": "trozet",
 }
 
 ALIASES_TO_USERNAMES = {
@@ -99,8 +99,15 @@ METAL_LB_COMPONENT = "networking / metal LB"
 CNO_COMPONENT = "networking / cluster-network-operator"
 CNCC_COMPONENT = "networking / cloud-network-config-controller"
 ESCALATIONS_COMPONENT = "networking/sdn"
-TEAM_COMPONENTS = (GENERIC_COMPONENT, SDN_COMPONENT, OVN_COMPONENT, CNCC_COMPONENT,
-                   INGRESS_FW_COMPONENT, METAL_LB_COMPONENT, CNO_COMPONENT)
+TEAM_COMPONENTS = (
+    GENERIC_COMPONENT,
+    SDN_COMPONENT,
+    OVN_COMPONENT,
+    CNCC_COMPONENT,
+    INGRESS_FW_COMPONENT,
+    METAL_LB_COMPONENT,
+    CNO_COMPONENT,
+)
 ASSIGN_WINDOW_DAYS = 21  # 3 weeks in a sprint
 
 
@@ -134,12 +141,14 @@ def init_developers_dict():
 
 
 def retrieve_github_issues():
-    github_repo = 'ovn-org/ovn-kubernetes'
+    github_repo = "ovn-org/ovn-kubernetes"
     # add &state=open to the URL below to only fetch open issues
-    github_api = f'https://api.github.com/repos/{github_repo}/issues?labels={GITHUB_ISSUES_LABEL}'
+    github_api = f"https://api.github.com/repos/{github_repo}/issues?labels={GITHUB_ISSUES_LABEL}"
     response = requests.get(github_api)
     github_issues = response.json()
-    print(f"- Found {len(github_issues)} github issues with {GITHUB_ISSUES_LABEL} label")
+    print(
+        f"- Found {len(github_issues)} github issues with {GITHUB_ISSUES_LABEL} label"
+    )
     return github_issues
 
 
@@ -148,15 +157,23 @@ def get_query_for_jira_stories_tracking_github_issues():
 
 
 def get_query_for_unassigned_jira_stories_tracking_github_issues():
-    _, default_assignee_mail = get_username_and_usermail_from_assignee(DEFAULT_JIRA_ASSIGNEE)
-    return (get_query_for_jira_stories_tracking_github_issues() +
-            f' AND filter in (Unresolved) AND (assignee = "{default_assignee_mail}" OR assignee is EMPTY)')
+    _, default_assignee_mail = get_username_and_usermail_from_assignee(
+        DEFAULT_JIRA_ASSIGNEE
+    )
+    return (
+        get_query_for_jira_stories_tracking_github_issues()
+        + f' AND filter in (Unresolved) AND (assignee = "{default_assignee_mail}" OR assignee is EMPTY)'
+    )
 
 
 def get_query_for_unresolved_jira_stories_tracking_github_issues():
-    _, default_assignee_mail = get_username_and_usermail_from_assignee(DEFAULT_JIRA_ASSIGNEE)
-    return (get_query_for_jira_stories_tracking_github_issues() +
-            f' AND filter in (Unresolved) AND assignee != "{default_assignee_mail}" AND assignee is not EMPTY')
+    _, default_assignee_mail = get_username_and_usermail_from_assignee(
+        DEFAULT_JIRA_ASSIGNEE
+    )
+    return (
+        get_query_for_jira_stories_tracking_github_issues()
+        + f' AND filter in (Unresolved) AND assignee != "{default_assignee_mail}" AND assignee is not EMPTY'
+    )
 
 
 def align_jira_with_open_github_issues(github_issues):
@@ -171,37 +188,53 @@ def align_jira_with_open_github_issues(github_issues):
     jira_stories = run_jira_query(jira_client, query)
 
     for issue in github_issues:
-        github_issue_number = issue['number']
-        github_issue_title = issue['title']
-        github_issue_url = issue['html_url']
-        github_issue_assignee = issue['assignee']['login'] if issue['assignee'] else None
-        github_issue_is_open = issue.get("state", '').lower() == "open"
+        github_issue_number = issue["number"]
+        github_issue_title = issue["title"]
+        github_issue_url = issue["html_url"]
+        github_issue_assignee = (
+            issue["assignee"]["login"] if issue["assignee"] else None
+        )
+        github_issue_is_open = issue.get("state", "").lower() == "open"
         expected_summary_prefix = f"upstream-{github_issue_number}"
 
         github_details[github_issue_number] = {
-            'url': github_issue_url,
-            'is_open': github_issue_is_open,
+            "url": github_issue_url,
+            "is_open": github_issue_is_open,
         }
         github_to_jira[github_issue_number] = []
 
         # Check whether the github issue already has an associated jira story
         found_matching_jira = False
         for jira_story in jira_stories:
-            if jira_story.fields.summary and expected_summary_prefix in jira_story.fields.summary.lower():
+            if (
+                jira_story.fields.summary
+                and expected_summary_prefix in jira_story.fields.summary.lower()
+            ):
                 github_to_jira[github_issue_number].append(jira_story.key)
-                jira_story_is_open = "closed" not in jira_story.fields.status.name.lower()
+                jira_story_is_open = (
+                    "closed" not in jira_story.fields.status.name.lower()
+                )
                 matching_jira_details[jira_story.key] = {
-                    'is_open': jira_story_is_open,
-                    'github': github_issue_number}
+                    "is_open": jira_story_is_open,
+                    "github": github_issue_number,
+                }
                 found_matching_jira = True
 
         # Create a jira story if the github issue is open and has no story on jira yet
         if not found_matching_jira and github_issue_is_open:
             jira_story_summary = f"{expected_summary_prefix}: {github_issue_title}"
-            jira_story_description = f"Tracking ovn-kubernetes upstream issue: {github_issue_url}"
-            jira_story_assignee = GITHUB_TO_JIRA_USERS.get(github_issue_assignee) or DEFAULT_JIRA_ASSIGNEE
-            _, jira_story_assignee_mail = get_username_and_usermail_from_assignee(jira_story_assignee)
-            jira_story_assignee_user_alias, _ = get_alias_and_email_alias_from_username(jira_story_assignee)
+            jira_story_description = (
+                f"Tracking ovn-kubernetes upstream issue: {github_issue_url}"
+            )
+            jira_story_assignee = (
+                GITHUB_TO_JIRA_USERS.get(github_issue_assignee) or DEFAULT_JIRA_ASSIGNEE
+            )
+            _, jira_story_assignee_mail = get_username_and_usermail_from_assignee(
+                jira_story_assignee
+            )
+            jira_story_assignee_user_alias, _ = get_alias_and_email_alias_from_username(
+                jira_story_assignee
+            )
             # Our jira server is not really consistent in the assignee format it accepts:
             # - if a user has an alias, the assignee should be the alias user name (not email address)
             # - if a user has no alias, the assignee should be the email address
@@ -212,21 +245,23 @@ def align_jira_with_open_github_issues(github_issues):
             # Create a new Jira story
             try:
                 new_jira = jira_client.create_issue(
-                    project={'key': 'SDN'},
+                    project={"key": "SDN"},
                     summary=jira_story_summary,
                     description=jira_story_description,
-                    issuetype={'name': 'Story'},
-                    assignee={'name': assignee_value},
-                    customfield_12311140=JIRA_EPIC_FOR_GITHUB_ISSUES
+                    issuetype={"name": "Story"},
+                    assignee={"name": assignee_value},
+                    customfield_12311140=JIRA_EPIC_FOR_GITHUB_ISSUES,
                 )
             except Exception as ex:
-                print(f"could not create story for github issue {github_issue_url} "
-                      f"(summary={jira_story_summary}, assignee={assignee_value}, "
-                      f"description={jira_story_description}, error={ex})")
+                print(
+                    f"could not create story for github issue {github_issue_url} "
+                    f"(summary={jira_story_summary}, assignee={assignee_value}, "
+                    f"description={jira_story_description}, error={ex})"
+                )
             else:
                 created_jira_stories.append(new_jira)
                 github_to_jira[github_issue_number].append(new_jira.key)
-                matching_jira_details[jira_story.key] = {'is_open': True}
+                matching_jira_details[jira_story.key] = {"is_open": True}
 
     # Print a list of created jira stories
     if created_jira_stories:
@@ -245,9 +280,11 @@ def align_jira_with_open_github_issues(github_issues):
     for github_id, jira_ids in github_to_jira.items():
         github_url = github_details[github_id]["url"]
         github_is_open = github_details[github_id]["is_open"]
-        def print_state_str(x): return "open" if x else "closed"
 
-        if not jira_ids:   # should not happen
+        def print_state_str(x):
+            return "open" if x else "closed"
+
+        if not jira_ids:  # should not happen
             print(f"- Github issue {github_url} is not tracked by any jira story")
 
         elif len(jira_ids) == 1:
@@ -255,14 +292,20 @@ def align_jira_with_open_github_issues(github_issues):
             jira_is_open = matching_jira_details[jira_ids[0]]["is_open"]
             if jira_is_open != github_is_open:
                 jira_url = get_jira_issue_url(jira_ids[0])
-                print(f"- Github issue {github_url} is {print_state_str(github_is_open)}"
-                      f" but is tracked by a {print_state_str(jira_is_open)} jira story: {jira_url}")
+                print(
+                    f"- Github issue {github_url} is {print_state_str(github_is_open)}"
+                    f" but is tracked by a {print_state_str(jira_is_open)} jira story: {jira_url}"
+                )
 
         else:  # more than one matching jira
-            open_matching_jiras = [j for j in jira_ids if matching_jira_details[j]["is_open"]]
+            open_matching_jiras = [
+                j for j in jira_ids if matching_jira_details[j]["is_open"]
+            ]
 
             if len(open_matching_jiras) > 1:
-                print(f"- Github issue {github_url} is tracked by more than one open jira story:")
+                print(
+                    f"- Github issue {github_url} is tracked by more than one open jira story:"
+                )
                 for j in open_matching_jiras:
                     print(f"\t{get_jira_issue_url(j)}")
 
@@ -270,14 +313,18 @@ def align_jira_with_open_github_issues(github_issues):
                 # for any open github issue, make sure only one tracking jira story is open
                 # (multiple matching jiras are already detected above)
                 if not open_matching_jiras:
-                    print(f"- Github issue {github_url} is open and is tracked by closed jira stories:")
+                    print(
+                        f"- Github issue {github_url} is open and is tracked by closed jira stories:"
+                    )
                     for j in jira_ids:
                         print(f"\t{get_jira_issue_url(j)}")
 
             else:
                 # github issue is closed: make sure all tracking jira issues are also closed
                 if open_matching_jiras:
-                    print(f"- Github issue {github_url} is closed and is tracked by open jira stories:")
+                    print(
+                        f"- Github issue {github_url} is closed and is tracked by open jira stories:"
+                    )
                     for j in open_matching_jiras:
                         print(f"\t{get_jira_issue_url(j)}")
 
@@ -299,14 +346,18 @@ def process_github_issues():
 def retrieve_unassigned_jira_bugs():
     clients = init_clients(jira_=True)
 
-    query = '(filter in ("SDN BZ filter", "SDN OCPBUGS") OR project = RHOCPPRIO AND component in ("networking/sdn") ' \
-            'OR project = SDN AND issuetype = Bug) AND filter in (Unresolved) AND ((project = OCPBUGSM OR project = ' \
-            'OCPBUGS) AND assignee = "bbennett@redhat.com" OR project = RHOCPPRIO AND assignee in (' \
-            '"anbhat@redhat.com", "zshi@redhat.com") OR assignee is EMPTY) ORDER BY Rank DESC'
+    query = (
+        '(filter in ("SDN BZ filter", "SDN OCPBUGS") OR project = RHOCPPRIO AND component in ("networking/sdn") '
+        "OR project = SDN AND issuetype = Bug) AND filter in (Unresolved) AND ((project = OCPBUGSM OR project = "
+        'OCPBUGS) AND assignee = "bbennett@redhat.com" OR project = RHOCPPRIO AND assignee in ('
+        '"anbhat@redhat.com", "zshi@redhat.com") OR assignee is EMPTY) ORDER BY Rank DESC'
+    )
     bugs = run_jira_query(clients[JIRA_KEY], query)
 
     upstream_issues = run_jira_query(
-        clients[JIRA_KEY], get_query_for_unassigned_jira_stories_tracking_github_issues())
+        clients[JIRA_KEY],
+        get_query_for_unassigned_jira_stories_tracking_github_issues(),
+    )
 
     return bugs + upstream_issues
 
@@ -327,8 +378,10 @@ def init_queries(clients, jira_bugs=True, jira_escalations=False):
     query_dict = {}
     if jira_bugs:
         query_dict[JIRA_BUGS] = {
-            "queries": [init_jira_query_for_bugs(),
-                        get_query_for_unresolved_jira_stories_tracking_github_issues()]
+            "queries": [
+                init_jira_query_for_bugs(),
+                get_query_for_unresolved_jira_stories_tracking_github_issues(),
+            ]
         }
 
     if jira_escalations:
@@ -363,10 +416,10 @@ def get_username_and_usermail_from_assignee(assignee):
     # assignee is a username or a usermail
     # Useful for jira, where the usermail is most often, but not always,
     # what appears as assignee for a bug.
-    mail_domain = '@redhat.com'
+    mail_domain = "@redhat.com"
     if assignee.endswith(mail_domain):
         usermail = assignee
-        username = assignee[:-len(mail_domain)]
+        username = assignee[: -len(mail_domain)]
     else:
         usermail = assignee + mail_domain
         username = assignee
@@ -402,9 +455,13 @@ def init_jira_query_for_one_assignee(assignee):
     username, usermail = get_username_and_usermail_from_assignee(assignee)
     alias, email_alias = get_alias_and_email_alias_from_username(assignee)
     all_usernames = [x for x in [username, usermail, alias, email_alias] if x]
-    assignee_tpl = 'assignee in ({}) and '
-    assignee_values = ', '.join(f'"{u}"' for u in all_usernames)  # (enclose within quotes)
-    query = assignee_tpl.format(assignee_values) + init_jira_query_for_bugs(open_only=False)
+    assignee_tpl = "assignee in ({}) and "
+    assignee_values = ", ".join(
+        f'"{u}"' for u in all_usernames
+    )  # (enclose within quotes)
+    query = assignee_tpl.format(assignee_values) + init_jira_query_for_bugs(
+        open_only=False
+    )
     return query
 
 
@@ -428,8 +485,11 @@ def time_query(func):
         t_start = time.time()
         bugs = func(platform_api, query_str, **kwargs)
         t_end = time.time()
-        print("- Found {} bugs in {:.1f}s with the query: {}".format(
-            len(bugs), t_end - t_start, query_str))
+        print(
+            "- Found {} bugs in {:.1f}s with the query: {}".format(
+                len(bugs), t_end - t_start, query_str
+            )
+        )
         return bugs
 
     return wrapper
@@ -453,9 +513,11 @@ def run_jira_query(jira_api, query, expand_changelog=False):
             sys.stdout.write(".")
             sys.stdout.flush()
             time.sleep(0.05)
-            if i == max_attempts-1:
-                sys.exit(f"Failed to query JIRA server {max_attempts} times. "
-                         f"Query: {query}; Error: {ex}")
+            if i == max_attempts - 1:
+                sys.exit(
+                    f"Failed to query JIRA server {max_attempts} times. "
+                    f"Query: {query}; Error: {ex}"
+                )
         else:
             # print("JIRA query successful at attempt={}".format(i))
             break
@@ -480,7 +542,9 @@ def run_queries(jira_bugs=True, jira_escalations=False):
     if jira_escalations:
         query_dict[JIRA_ESCALATIONS]["bugs"] = []
         for query in query_dict[JIRA_ESCALATIONS]["queries"]:
-            query_dict[JIRA_ESCALATIONS]["bugs"] += run_jira_query(clients[JIRA_KEY], query)
+            query_dict[JIRA_ESCALATIONS]["bugs"] += run_jira_query(
+                clients[JIRA_KEY], query
+            )
 
     return query_dict
 
@@ -504,16 +568,20 @@ def was_jira_bug_recently_assigned(bug):
     #    'to': 'JIRAUSER163232',
     #    'toString': 'Jaime Caamaño Ruiz'}]},
     # skip automatically-generated backports
-    if "prow bot" in bug.get_field('creator').displayName.lower():
+    if "prow bot" in bug.get_field("creator").displayName.lower():
         return False
 
     try:
         # take all changelogs that modified the assignee and evaluate the latest
         assignee_changes = sorted(
-            [change for change in bug.changelog.histories
-             for item in change.items
-             if item.field == 'assignee'],
-            key=lambda change: parse(change.created))  # sort by change timestamp
+            [
+                change
+                for change in bug.changelog.histories
+                for item in change.items
+                if item.field == "assignee"
+            ],
+            key=lambda change: parse(change.created),
+        )  # sort by change timestamp
 
         if assignee_changes:
             latest_assign = assignee_changes[-1].created
@@ -523,7 +591,9 @@ def was_jira_bug_recently_assigned(bug):
             # as the assigning date
             latest_assign = bug.get_field("created")
 
-        days_difference = (datetime.now() - parse(latest_assign).replace(tzinfo=None)).days
+        days_difference = (
+            datetime.now() - parse(latest_assign).replace(tzinfo=None)
+        ).days
         return days_difference <= ASSIGN_WINDOW_DAYS
 
     except Exception as ex:
@@ -556,7 +626,9 @@ def process_jira_bugs(bugs, developers, quick=False):
         # it might also be just a username.
         if assignee_mail not in developers:
             # check if it's a known alias
-            tmp_assignee, tmp_email = get_username_and_usermail_from_alias(assignee_user)
+            tmp_assignee, tmp_email = get_username_and_usermail_from_alias(
+                assignee_user
+            )
             if tmp_email and tmp_email in developers:
                 assignee_user, assignee_mail = tmp_assignee, tmp_email
             else:
@@ -681,8 +753,11 @@ def print_results(developers, stale_bugs, print_stale_bugs=False, quick=False):
         print("  ASSIGNED:    {}".format(v["bugs_in_assigned"]))
         print("  POST:        {}".format(v["bugs_in_post"]))
         if not quick:
-            print("  Assigned <= {} days: {}".format(
-                ASSIGN_WINDOW_DAYS, v["recently_assigned"]))
+            print(
+                "  Assigned <= {} days: {}".format(
+                    ASSIGN_WINDOW_DAYS, v["recently_assigned"]
+                )
+            )
         print("  Bug URLs:    {}".format(v["bugs_urls"]))
         print("")
 
@@ -730,19 +805,21 @@ def print_summary_table(developers, quick=False):
         headers.append("Assigned\n <=21 days")
     lines = []
     for rank, (k, v) in enumerate(ordered_by_points.items()):
-        new_line = [rank+1,
-                    k,
-                    v["points"],
-                    v["number_of_bugs"],
-                    v["bugs_in_new"],
-                    v["bugs_in_assigned"],
-                    v["bugs_in_post"]]
+        new_line = [
+            rank + 1,
+            k,
+            v["points"],
+            v["number_of_bugs"],
+            v["bugs_in_new"],
+            v["bugs_in_assigned"],
+            v["bugs_in_post"],
+        ]
         if not quick:
             new_line.append(v["recently_assigned"])
         lines.append(new_line)
     print(tabulate(lines, headers=headers))
 
-    explanation_message = '''
+    explanation_message = """
 Points are calculated according to bug priority:
 - blocker:  {blocker}
 - critical:  {critical}
@@ -750,7 +827,9 @@ Points are calculated according to bug priority:
 - normal:      {normal}
 - minor:        {minor}
 - undefined:    {undefined}
-'''.format(**PRIORITY_WEIGHTS)
+""".format(
+        **PRIORITY_WEIGHTS
+    )
     print(explanation_message)
 
 
@@ -780,29 +859,32 @@ def parse_input_args():
     )
 
     parser.add_argument(
-        "-v", "--verbose",
-        help="Print detailed results",
-        action="store_true"
+        "-v", "--verbose", help="Print detailed results", action="store_true"
     )
 
     parser.add_argument(
-        "-q", "--quick",
+        "-q",
+        "--quick",
         help="Skip assign analysis and get results more quickly",
-        action="store_true"
+        action="store_true",
     )
 
     parser.add_argument(
-        "-n", "--new-bugs",
+        "-n",
+        "--new-bugs",
         help="Print currently unassigned bugs in a markup format",
-        action="store_true"
+        action="store_true",
     )
 
     parser.add_argument(
-        "-g", "--process-github-issues",
-        help=("For each ovn-org/ovn-kubernetes github issue with the "
-              f"{GITHUB_ISSUES_LABEL} label, "
-              "make sure a corresponding jira ticket exists"),
-        action="store_true"
+        "-g",
+        "--process-github-issues",
+        help=(
+            "For each ovn-org/ovn-kubernetes github issue with the "
+            f"{GITHUB_ISSUES_LABEL} label, "
+            "make sure a corresponding jira ticket exists"
+        ),
+        action="store_true",
     )
 
     parser.add_argument(
@@ -820,7 +902,13 @@ def parse_input_args():
     # However, as soon as issue types are explicitly specified as input parameters,
     # only those that are specified are queried.
     jira_bugs = jira_escalations = process_github_issues = new_bugs = False
-    if args.jira_bugs or args.jira_escalations or args.process_github_issues or args.new_bugs or args.quick:
+    if (
+        args.jira_bugs
+        or args.jira_escalations
+        or args.process_github_issues
+        or args.new_bugs
+        or args.quick
+    ):
         jira_bugs = bool(args.jira_bugs) or bool(args.quick)
         jira_escalations = bool(args.jira_escalations)
         process_github_issues = bool(args.process_github_issues)
@@ -838,7 +926,7 @@ def parse_input_args():
         "verbose": bool(args.verbose),
         "quick": bool(args.quick),
         "new_bugs": new_bugs,
-        "process_github_issues": process_github_issues
+        "process_github_issues": process_github_issues,
     }
 
     return params
@@ -856,12 +944,16 @@ def main():
             jira_bugs=params.get("jira_bugs"),
             jira_escalations=params.get("jira_escalations"),
         )
-        developers, stale_bugs = process_bugs(bugs_dict, developers, params.get("quick"))
+        developers, stale_bugs = process_bugs(
+            bugs_dict, developers, params.get("quick")
+        )
         if params.get("verbose"):
-            print_results(developers,
-                          stale_bugs,
-                          print_stale_bugs=params.get("old-bugs"),
-                          quick=params.get("quick"))
+            print_results(
+                developers,
+                stale_bugs,
+                print_stale_bugs=params.get("old-bugs"),
+                quick=params.get("quick"),
+            )
             print_summary_table(developers, params.get("quick"))
         else:
             print_summary_table(developers, params.get("quick"))
