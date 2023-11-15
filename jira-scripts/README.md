@@ -1,17 +1,15 @@
 # Quick reference
 - [Download source code and install dependencies](#download-source-code-and-install-dependencies)
-- [Configure bugzilla client](#configure-bugzilla-client)
 - [Configure jira client](#configure-jira-client)
 - [Run network_bugs_overview script](#run-network_bugs_overview-script)
 - [Documentation](#documentation)
 
 This is a quick reference for the `network_bugs_overview` command line.
-`network_bugs_overview` is based on [python-bugzilla project](https://github.com/python-bugzilla/python-bugzilla) and on [jira library for Python](https://github.com/pycontribs/jira).
+`network_bugs_overview` is based on [jira library for Python](https://github.com/pycontribs/jira).
 
-It fetches open bugs assigned to our team members from our bugzilla and our jira servers, analyzes them and prints out a per-developer summary in the order from the currently least-loaded to currently the most-loaded team member.
+It fetches open bugs assigned to our team members from our jira server, analyzes them and prints out a per-developer summary in the order from the currently least-loaded to currently the most-loaded team member.
 
 In particular, it queries:
-- bugzilla for existing bugs (the creation new bugs will soon be disabled on our bugzilla server),
 - jira (OCPBUGS project) for bugs and
 - jira (RHOCPPRIO project) for escalations.
 
@@ -20,26 +18,11 @@ In particular, it queries:
 $ git clone https://github.com/openshift/network-tools && pushd network-tools/jira-scripts
 
 $ cat requirements.txt
-python-bugzilla
 jira
 python-dateutil
 
 $ pip install --upgrade pip
 $ pip install -r requirements.txt
-```
-
-## Configure bugzilla client
-First, generate the `api key` to communicate with bugzilla using `python-bugzilla` module.
-Go to https://bugzilla.redhat.com and click: **Username -> Preferences -> API Keys**.
-
-**ATTENTION:**
-As soon you click: "**Generate the API-key**" a long string will be generated with chars and numbers, COPY it as it's only displayed **ONCE**.
-
-```
-$ mkdir -p ~/.config/python-bugzilla/ && cd ~/.config/python-bugzilla/
-$ cat bugzillarc
-[bugzilla.redhat.com]
-api_key=qwertyuiopasdfghjklzxcvbnm           <----- Long string generated once in the step above.
 ```
 
 ## Configure jira client
@@ -60,26 +43,42 @@ The available input arguments are the following:
 
 ```
 $ ./network_bugs_overview -h
-usage: network_bugs_overview [-h] [--bz] [--jira-bugs] [--jira-escalations] [--old-bugs]
+usage: network_bugs_overview [-h] [--jira-bugs] [--jira-escalations] [-v] [-q] [-n] [-g] [--old-bugs]
 
 options:
-  -h, --help          show this help message and exit
-  --bz                run a query to bugzilla. By default, when no bug type is specified as input arg, bz and jira bugs are fetched, but not jira escalations.
-  --jira-bugs         run a query to jira server for jira bugs. By default, when no bug type is specified as input arg, bz and jira bugs are fetched, but not jira escalations.
-  --jira-escalations  run a query to jira server for jira escalations. By default, when no bug type is specified as input arg, bz and jira bugs are fetched, but not jira escalations.
-  --old-bugs          Print a list of bugs that have been in the new state for more than 30 days
+  -h, --help            show this help message and exit
+  --jira-bugs           run a query to jira server for jira bugs. By default, when no bug type is specified as input arg, jira bugs are fetched, but not jira escalations.
+  --jira-escalations    run a query to jira server for jira escalations. By default, when no bug type is specified as input arg, jira bugs are fetched, but not jira escalations.
+  -v, --verbose         Print detailed results
+  -q, --quick           Skip assign analysis and get results more quickly
+  -n, --new-bugs        Print currently unassigned bugs in a markup format
+  -g, --process-github-issues
+                        For each ovn-org/ovn-kubernetes github issue with the ci-flake label, make sure a corresponding jira ticket exists
+  --old-bugs            Print a list of bugs that have been in the new state for more than 30 days
 ```
 
-By running the python script as is, it will query the bugzilla server for existing bugs and the jira server for bugs in the OCPBUGS project:
+By running the python script as is, it will execute by default the following:
+1. it will make that sure all ovn-k upstream issues with the ci-flake label are tracked in jira ("--process-github-issues" above);
+2. it will query the jira server for assigned bugs in the OCPBUGS project and output a ranking of team members according to their bug load ("--jira-bugs" above);
+3. it will print a list of unassigned bugs in a markup format ("--new-bugs" above):
 
 ```
 ./network_bugs_overview
 ```
 
-Alternatively, we can specify the types of issues to query for:
+Alternatively, you can specify the single actions to execute:
 
 ```
-./network_bugs_overview --jira-bugs --jira-escalations
+./network_bugs_overview --new-bugs
+```
+
+```
+./network_bugs_overview --process-github-issues --quick
+```
+
+You can also print a quick version of the team bug load, by skipping the "assigned <=21 days" column, which often takes a long time to run:
+```
+./network_bugs_overview --quick
 ```
 
 Finally, you can print the bugs that have been in the NEW state for more than 30 days and are therefore considered stale:
@@ -89,7 +88,5 @@ Finally, you can print the bugs that have been in the NEW state for more than 30
 ```
 
 ## Documentation
-
-https://bugzilla.readthedocs.io/en/latest/api/core/v1/bug.html#search-bugs
 
 https://jira.readthedocs.io/examples.html
