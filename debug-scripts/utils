@@ -51,6 +51,12 @@ function get_ovn_controller_container_name {
   echo ${OVN_CONTAINER}
 }
 
+function get_ovn_node_container_name {
+  OVN_CONTAINER="ovnkube-controller"
+  [ $(get_ovn_mode) == "ovn-ic" ] || OVN_CONTAINER="ovnkube-node"
+  echo ${OVN_CONTAINER}
+}
+
 get_ovndb_pods () {
   NODE_PODS=$(oc -n ${OVN_NAMESPACE} get pods -l app=ovnkube-node -o=jsonpath='{.items[*].metadata.name}' || { echo "Can't get ovnkube-node pods" 1>&2; exit 1; })
   echo ${NODE_PODS}

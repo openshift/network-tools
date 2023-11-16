@@ -133,6 +133,29 @@ To copy a folder from network-tools container use `--source-dir '<container dir>
 # Available `network-tools` commands
 
 The following part of this file is auto-generated based on commands help.
+* `network-tools ovn-count-flows`
+
+```
+This script collects the number of OVS flows for a given pod, and maps it to the nbdb ACL data.
+The result depends on the given pod, since some ACLs are not translated to OVS flows, e.g. if port group ports don't
+exist on a given node.
+
+Usage: network-tools ovn-count-flows [-l limit] [pod_name]
+
+Options:
+  pod_name:
+    use given pod to count OVS flows, should have ovs-ofctl installed.
+
+  limit (optional, default value is 5):
+    the number of flows to print information for (db entries translated to the highest number of OVS flows are printed first)
+
+Examples:
+  network-tools ovn-count-flows -l 10 ovnkube-node-2dwl7
+  network-tools ovn-count-flows ovnkube-node-2dwl7
+
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-count-flows -l 10 ovnkube-node-2dwl7
+
+```
 * `network-tools ovn-db-run-command`
 
 ```

@@ -1,0 +1,76 @@
+#!/bin/bash
+set -euo pipefail
+source ./utils
+
+description() {
+  echo "Count OVS flows for nbdb tables (only implemented for ACLs now)."
+}
+
+help () {
+  echo "This script collects the number of OVS flows for a given pod, and maps it to the nbdb ACL data.
+The result depends on the given pod, since some ACLs are not translated to OVS flows, e.g. if port group ports don't
+exist on a given node.
+
+Usage: $USAGE [-l limit] [pod_name]
+
+Options:
+  pod_name:
+    use given pod to count OVS flows, should have ovs-ofctl installed.
+
+  limit (optional, default value is 5):
+    the number of flows to print information for (db entries translated to the highest number of OVS flows are printed first)
+
+Examples:
+  $USAGE -l 10 ovnkube-node-2dwl7
+  $USAGE ovnkube-node-2dwl7
+
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE -l 10 ovnkube-node-2dwl7
+"
+}
+
+main() {
+    if [[ "$1" == "-l" ]]; then
+      limit="$2"
+      shift 2
+    else
+      limit=5
+    fi
+    pod="$1"
+    db_pod=$pod
+    if [ $(get_ovn_mode) != "ovn-ic" ]; then
+      # Legacy mode support: pod parameter is not necessary on 4.13 and older releases
+      db_pod=$(get_ovndb_leader_pod n)
+      echo "Leader pod is $db_pod"
+    fi
+    echo "NOTE: Every ACL will likely be printed twice, that is expected and means that the number of OVS flows for a given ACL \
+is a sum of all entries with the same name+ids"
+    NODE_CONTAINER="$(get_ovn_node_container_name)"
+    MASTER_CONTAINER="$(get_ovn_controller_container_name)"
+    ovs_stat=$(oc exec -c $NODE_CONTAINER -n $OVN_NAMESPACE $pod -- bash -c "ovs-ofctl dump-flows br-int | grep cookie | cut -d , -f 1 | sort -n | uniq -c | sort -n -r")
+    oc exec -c $MASTER_CONTAINER -n $OVN_NAMESPACE $db_pod -- bash -c '
+    limit=$0
+    ovs_stat=$1
+    iterations_counter=0
+    echo "$ovs_stat" | while read -r str; do
+      counter=$(echo $str | cut -d " " -f 1)
+      cookie=$(echo $str | cut -d = -f 2 | cut -d x -f 2)
+      nbdb_hint=$(ovn-sbctl --if-exist get logical_flow $cookie external_ids:stage-hint | tr -d \")
+      if [ -n "$nbdb_hint" ]; then
+        acl_ids=$(ovn-nbctl --if-exist get acl $nbdb_hint name external_ids)
+        if [ -n "$acl_ids" ]; then
+          echo Number of OVS flows=$counter for ACL with name and ids = $acl_ids
+          iterations_counter=$((iterations_counter+1))
+          if [ "$iterations_counter" -ge "$limit" ]; then
+            echo "Iterations limit is reached"
+            exit 0
+          fi
+        fi
+      fi
+    done' $limit "$ovs_stat"
+}
+
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

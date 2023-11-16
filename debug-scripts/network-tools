@@ -51,6 +51,7 @@ function main() {
     declare -A -x other_commands=(
         ["ovn-metrics-list"]="./scripts/ovn-metrics-list"
         ["ovn-get"]="./scripts/ovn-get"
+        ["ovn-count-flows"]="./scripts/ovn-count-flows"
         ["ovn-db-run-command"]="./scripts/ovn-db-run-command"
         ["pod-run-netns-command"]="./scripts/pod-run-netns-command"
     )
