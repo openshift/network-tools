@@ -39,7 +39,8 @@ main() {
     db_pod=$pod
     if [ $(get_ovn_mode) != "ovn-ic" ]; then
       # Legacy mode support: pod parameter is not necessary on 4.13 and older releases
-      db_pod=$(get_ovndb_leader_pod n)
+      # use sbdb leader as we make more sbdb calls
+      db_pod=$(get_ovndb_leader_pod s)
       echo "Leader pod is $db_pod"
     fi
     echo "NOTE: Every ACL will likely be printed twice, that is expected and means that the number of OVS flows for a given ACL \
@@ -54,9 +55,9 @@ is a sum of all entries with the same name+ids"
     echo "$ovs_stat" | while read -r str; do
       counter=$(echo $str | cut -d " " -f 1)
       cookie=$(echo $str | cut -d = -f 2 | cut -d x -f 2)
-      nbdb_hint=$(ovn-sbctl --if-exist get logical_flow $cookie external_ids:stage-hint | tr -d \")
+      nbdb_hint=$(ovn-sbctl --no-leader-only --if-exist get logical_flow $cookie external_ids:stage-hint | tr -d \")
       if [ -n "$nbdb_hint" ]; then
-        acl_ids=$(ovn-nbctl --if-exist get acl $nbdb_hint name external_ids)
+        acl_ids=$(ovn-nbctl --no-leader-only --if-exist get acl $nbdb_hint name external_ids)
         if [ -n "$acl_ids" ]; then
           echo Number of OVS flows=$counter for ACL with name and ids = $acl_ids
           iterations_counter=$((iterations_counter+1))
