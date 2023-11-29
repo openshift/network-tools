@@ -35,7 +35,7 @@ get_network_plugin () {
   oc get networks.config.openshift.io cluster -o 'jsonpath={.spec.networkType}'
 }
 
-function get_ovn_mode {
+get_ovn_mode () {
   sample_node=$(oc get no -o jsonpath='{.items[0].metadata.name}')
   sample_node_zone=$(oc get node "${sample_node}" -o jsonpath='{.metadata.annotations.k8s\.ovn\.org/zone-name}')
   if [ "${sample_node}" = "${sample_node_zone}" ]; then
@@ -45,7 +45,7 @@ function get_ovn_mode {
   fi
 }
 
-function get_ovn_controller_container_name {
+get_ovn_controller_container_name () {
   OVN_CONTAINER="ovnkube-controller"
   [ $(get_ovn_mode) == "ovn-ic" ] || OVN_CONTAINER="ovnkube-master"
   echo ${OVN_CONTAINER}
@@ -93,13 +93,13 @@ ensure_output_dir () {
   popd > /dev/null || exit 1
 }
 
-get_pod_node() {
+get_pod_node () {
     local namespace="${1}"
     local name="${2}"
     oc get pod -n "$namespace" "$name" -o jsonpath={.spec.nodeName}  || { echo "ERROR: Can't get pod node" 1>&2; exit 1; }
 }
 
-get_netns_pid() {
+get_netns_pid () {
   local namespace="${1}"
   local pod="${2}"
 
@@ -115,7 +115,7 @@ ctrl_c () {
   exit 0
 }
 
-run_command_inside_pod_network_namespace_with_network_tools() {
+run_command_inside_pod_network_namespace_with_network_tools () {
     SLEEP=""
     if [[ "$1" == "--preserve-pod" || "$1" == "-pp" ]]; then
        SLEEP="; echo DONE; sleep 300"
@@ -167,11 +167,39 @@ nsenter -n -t $ns_pid <command>
     fi
 }
 
-get_full_path() {
+get_full_path () {
   if [[ "$1" = /* ]]; then
     echo "$1"
   else
     relative_path=$1
     readlink -e "$NETWORK_TOOLS_INITIAL_DIR/$relative_path" || { echo "Provided path $relative_path doesn't exist" 1>&2; exit 1; }
   fi
+}
+
+get_db_type () {
+  local FILE_PATH="${1}"
+
+  if ! command -v jq &> /dev/null; then
+    echo "ERROR: jq is not installed. Exiting." >&2
+    exit 1
+  fi
+
+  # Check if the file path is provided
+  if [ ! -e "$FILE_PATH" ]; then
+      echo "ERROR: Please provide a valid file path to OVN database." >&2
+      exit 1
+  fi
+
+  # Leverage grep to quickly find the needle in the haystack
+  grep --max-count=1 --silent '"OVN_Northbound"' "$FILE_PATH" && {
+    echo n
+    return
+  }
+
+  grep --max-count=1 --silent '"OVN_Southbound"' "$FILE_PATH" && {
+    echo s
+    return
+  }
+
+  echo unknown_db_type
 }
