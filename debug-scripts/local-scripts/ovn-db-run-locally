@@ -19,13 +19,13 @@ as this is the only way to run db from gathered data. Db UUIDs will be preserved
 
 ATTENTION! This is local command, can't be used with must-gather.
 
-Usage: $USAGE raw_db_file ovn_db_type [-e {docker,podman}]
+Usage: $USAGE raw_db_file [{docker,podman}]
   raw_db_file: db file from must-gather
-  ovn_db_type: n for 'n' for northbound db, 's' for southbound db
-  -e {docker,podman}: choose container engine to use. Default is docker
+  {docker,podman}: choose container engine to use. Default is docker
 
 Examples:
-  $USAGE ./must-gather.local.8470413320584178988/quay-io-npinaeva-must-gather-sha256-48826a17ba08cf1ef1e27a7b85fdff459efb8fc5807c26cdb525eecbfb0ec6a3/network_logs/leader_nbdb n
+  $USAGE ./must-gather.local.847012/quay-io-npinaeva-must-gather-sha256-48826/network_logs/leader_nbdb
+  $USAGE ./leader_sbdb podman
 "
 }
 
@@ -38,12 +38,23 @@ clean_up () {
 
 main() {
   # $1 - db file
-  # $2 - ovn db type ('n' for north db, 's' for south db)
-  # $3 - container engine (docker or podman)
+  # $2 - container engine (docker or podman)
 
-  CONTAINER_ENGINE="${3:-docker}"
-  DB_TYPE=$2
   DB_FILE=$(get_full_path "$1")
+
+  # Backwards compatibility: param 2 used to be the db type.
+  # If that was provided, keep calm and carry on. :)
+  CONTAINER_ENGINE="${2:-docker}"
+  case ${CONTAINER_ENGINE} in
+    n) DB_TYPE="n" ; CONTAINER_ENGINE="${3:-docker}" ;;
+    s) DB_TYPE="s" ; CONTAINER_ENGINE="${3:-docker}" ;;
+    *) DB_TYPE=$(get_db_type "$DB_FILE") ;;
+  esac
+
+  if [ -z "$DB_TYPE" ]; then
+      echo "ERROR: Unable to determine OVN database type." >&2
+      exit 1
+  fi
 
   CONTAINER=$($CONTAINER_ENGINE run -t -d --entrypoint /bin/bash quay.io/openshift/origin-ovn-kubernetes:latest)
   # cleanup if container is successfully created
