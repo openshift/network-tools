@@ -98,6 +98,7 @@ INGRESS_FW_COMPONENT = "networking / ingress-node-firewall"
 METAL_LB_COMPONENT = "networking / metal LB"
 CNO_COMPONENT = "networking / cluster-network-operator"
 CNCC_COMPONENT = "networking / cloud-network-config-controller"
+NETWORK_TOOLS_COMPONENT = "networking / network-tools"
 ESCALATIONS_COMPONENT = "networking/sdn"
 TEAM_COMPONENTS = (
     GENERIC_COMPONENT,
@@ -107,6 +108,7 @@ TEAM_COMPONENTS = (
     INGRESS_FW_COMPONENT,
     METAL_LB_COMPONENT,
     CNO_COMPONENT,
+    NETWORK_TOOLS_COMPONENT,
 )
 ASSIGN_WINDOW_DAYS = 21  # 3 weeks in a sprint
 
