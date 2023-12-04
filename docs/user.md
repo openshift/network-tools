@@ -57,6 +57,9 @@ To run script that are not included in the `network-tools -h` call them directly
 # Running custom commands
 
 `network-tools` image has some packages installed that can be useful for debugging:
+* bcc
+* bcc-tools
+* python3-bcc
 * nginx
 * numactl
 * traceroute
