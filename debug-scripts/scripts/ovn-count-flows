@@ -55,6 +55,9 @@ is a sum of all entries with the same name+ids"
     echo "$ovs_stat" | while read -r str; do
       counter=$(echo $str | cut -d " " -f 1)
       cookie=$(echo $str | cut -d = -f 2 | cut -d x -f 2)
+      while [[ ${#cookie} < 8 ]]; do
+        cookie=0$cookie
+      done
       nbdb_hint=$(ovn-sbctl --no-leader-only --if-exist get logical_flow $cookie external_ids:stage-hint | tr -d \")
       if [ -n "$nbdb_hint" ]; then
         acl_ids=$(ovn-nbctl --no-leader-only --if-exist get acl $nbdb_hint name external_ids)
