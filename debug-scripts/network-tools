@@ -52,6 +52,7 @@ function main() {
         ["ovn-metrics-list"]="./scripts/ovn-metrics-list"
         ["ovn-get"]="./scripts/ovn-get"
         ["ovn-count-flows"]="./scripts/ovn-count-flows"
+        ["ovn-perf-scanner"]="./scripts/ovn-perf-scanner"
         ["ovn-db-run-command"]="./scripts/ovn-db-run-command"
         ["pod-run-netns-command"]="./scripts/pod-run-netns-command"
     )
