@@ -4,4 +4,5 @@ declare -Ag INTERNAL_COMMANDS=(
     ["ovn-pprof-forwarding"]="./local-scripts/ovn-pprof-forwarding"
     ["ci-artifacts-get"]="./local-scripts/ci-artifacts-get"
     ["ovn-db-run-locally"]="./local-scripts/ovn-db-run-locally"
+    ["ovn-dbs-run-locally"]="./local-scripts/ovn-dbs-run-locally"
 )
