@@ -28,7 +28,7 @@ RH_DEVELOPERS = (
     "bpickard",
     # "bnemec",
     # "dougsland",
-    "ffernand",
+    # "ffernand",
     "jcaamano",
     "jluhrsen",
     "jtanenba",
@@ -43,7 +43,7 @@ RH_DEVELOPERS = (
 
 GITHUB_TO_JIRA_USERS = {
     "bpickard22": "bpickard",
-    "flavio-fernandes": "ffernand",
+    # "flavio-fernandes": "ffernand",
     "jcaamano": "jcaamano",
     "jluhrsen": "jluhrsen",
     "JacobTanenbaum": "jtanenba",
