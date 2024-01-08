@@ -136,7 +136,7 @@ To copy a folder from network-tools container use `--source-dir '<container dir>
 # Available `network-tools` commands
 
 The following part of this file is auto-generated based on commands help.
-* `network-tools ovn-count-flows`
+## `network-tools ovn-count-flows`
 
 ```
 This script collects the number of OVS flows for a given pod, and maps it to the nbdb ACL data.
@@ -159,7 +159,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-count-flows -l 10 ovnkube-node-2dwl7
 
 ```
-* `network-tools ovn-db-run-command`
+## `network-tools ovn-db-run-command`
 
 ```
 In non-ovn-ic (legacy) clusters, this script will find a leader pod (sbdb leader
@@ -194,7 +194,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-db-run-command -p ovnkube-node-twkpx ovn-sbctl dump-flows
 
 ```
-* `network-tools ovn-get`
+## `network-tools ovn-get`
 
 ```
 This script can get different ovn-related information.
@@ -217,7 +217,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-get mode
 
 ```
-* `network-tools ovn-metrics-list`
+## `network-tools ovn-metrics-list`
 
 ```
 This script collects OVN networking metrics: control-plane, node, and ovn.
@@ -235,7 +235,27 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-metrics-list /must-gather
 
 ```
-* `network-tools pod-run-netns-command`
+## `network-tools ovn-perf-scanner`
+
+```
+This script checks if there are signs of OVN containers being overloaded.
+By default it works with a live cluster, but also can be used with must-gather.
+If there are potential problems, you will see WARNING messages in the output.
+
+Usage: network-tools ovn-perf-scanner [-mg path_to_must-gather]
+
+Options:
+  -mg:
+    analyse must-gather instead of a live cluster
+
+Examples:
+  network-tools ovn-perf-scanner
+  network-tools ovn-perf-scanner -mg ~/Downloads/must-gather
+
+  oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-perf-scanner
+
+```
+## `network-tools pod-run-netns-command`
 
 ```
 Runs command from network-tools container within existing pod netnamespace.
@@ -337,7 +357,7 @@ Examples:
       # DON'T Ctrl+C terminal1 - wait for must-gather to finish by itself
 
 ```
-* `network-tools network-test`
+## `network-tools network-test`
 
 ```
 Run default debug sequence based on Networking plugin.
@@ -356,7 +376,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools network-test
 
 ```
-* `network-tools ovn-ipsec-connectivity`
+## `network-tools ovn-ipsec-connectivity`
 
 ```
 
@@ -378,7 +398,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-ipsec-connectivity
 
 ```
-* `network-tools ovn-nic-firmware`
+## `network-tools ovn-nic-firmware`
 
 ```
 
@@ -393,7 +413,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-nic-firmware
 
 ```
-* `network-tools ovn-pod-to-pod`
+## `network-tools ovn-pod-to-pod`
 
 ```
 This script checks pod2pod connectivity on an Openshift OVN cluster.
@@ -425,7 +445,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-pod <src-pod-namespace>/<src-pod-name>
 
 ```
-* `network-tools ovn-pod-to-svc`
+## `network-tools ovn-pod-to-svc`
 
 ```
 
@@ -461,7 +481,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools ovn-pod-to-svc <src-pod-namespace>/<src-pod-name>
 
 ```
-* `network-tools sdn-cluster-info`
+## `network-tools sdn-cluster-info`
 
 ```
 
@@ -483,7 +503,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-cluster-info
 
 ```
-* `network-tools sdn-node-connectivity`
+## `network-tools sdn-node-connectivity`
 
 ```
 
@@ -496,7 +516,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-node-connectivity
 
 ```
-* `network-tools sdn-pod-to-pod`
+## `network-tools sdn-pod-to-pod`
 
 ```
 
@@ -526,7 +546,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-pod <src-pod-namespace>/<src-pod-name>
 
 ```
-* `network-tools sdn-pod-to-svc`
+## `network-tools sdn-pod-to-svc`
 
 ```
 
@@ -559,7 +579,7 @@ Examples:
   oc adm must-gather --image-stream openshift/network-tools:latest -- network-tools sdn-pod-to-svc <src-pod-namespace>/<src-pod-name>
 
 ```
-* `network-tools ci-artifacts-get`
+## `network-tools ci-artifacts-get`
 
 ```
 Download ci prow job artifacts.
@@ -573,7 +593,7 @@ Examples:
   network-tools ci-artifacts-get https://prow.ci.openshift.org/view/gs/origin-ci-test/pr-logs/pull/26359/pull-ci-openshift-origin-master-e2e-aws-single-node/1422822145540493312 ./
 
 ```
-* `network-tools ovn-db-run-locally`
+## `network-tools ovn-db-run-locally`
 
 ```
 Run ovn-kubernetes container with ovn db restored from a given file.
@@ -597,7 +617,7 @@ Examples:
   network-tools ovn-db-run-locally ./must-gather.local.8470413320584178988/quay-io-npinaeva-must-gather-sha256-48826a17ba08cf1ef1e27a7b85fdff459efb8fc5807c26cdb525eecbfb0ec6a3/network_logs/leader_nbdb n
 
 ```
-* `network-tools ovn-pprof-forwarding`
+## `network-tools ovn-pprof-forwarding`
 
 ```
 This script enables port forwarding to make pprof endpoints for ovnkube containers available on localhost.

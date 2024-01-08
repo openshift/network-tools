@@ -10,7 +10,7 @@ print_help() {
       do
         command=$(echo $line | cut -s -d ":" -f 1)
         if [ -n "$command" ]; then
-            echo "* \`network-tools $command\`"
+            echo "## \`network-tools $command\`"
             echo
             echo "\`\`\`"
             ./debug-scripts/network-tools $command -h
