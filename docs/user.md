@@ -608,13 +608,13 @@ as this is the only way to run db from gathered data. Db UUIDs will be preserved
 
 ATTENTION! This is local command, can't be used with must-gather.
 
-Usage: network-tools ovn-db-run-locally raw_db_file ovn_db_type [-e {docker,podman}]
+Usage: network-tools ovn-db-run-locally raw_db_file [{docker,podman}]
   raw_db_file: db file from must-gather
-  ovn_db_type: n for 'n' for northbound db, 's' for southbound db
-  -e {docker,podman}: choose container engine to use. Default is docker
+  {docker,podman}: choose container engine to use. Default is docker
 
 Examples:
-  network-tools ovn-db-run-locally ./must-gather.local.8470413320584178988/quay-io-npinaeva-must-gather-sha256-48826a17ba08cf1ef1e27a7b85fdff459efb8fc5807c26cdb525eecbfb0ec6a3/network_logs/leader_nbdb n
+  network-tools ovn-db-run-locally ./must-gather.local.847012/quay-io-npinaeva-must-gather-sha256-48826/network_logs/leader_nbdb
+  network-tools ovn-db-run-locally ./leader_sbdb podman
 
 ```
 ## `network-tools ovn-pprof-forwarding`
