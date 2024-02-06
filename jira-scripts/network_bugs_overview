@@ -61,6 +61,9 @@ ALIASES_TO_USERNAMES = {
     "surya": "sseethar",
 }
 
+
+IGNORE_LABELS = ("SDN-SAST-Scan", "SDN:Backport", "SDN-ART-BUMP")
+
 # We're not using severity anymore when estimating workload, let's just keep the
 # following as comment for future reference if ever we need to use it again.
 # SEVERITY_JIRA_FIELD = "customfield_12316142"  # in OCPBUGS
@@ -140,6 +143,7 @@ def init_developers_dict():
                     "bugs_in_assigned": 0,
                     "bugs_in_post": 0,
                     "recently_assigned": 0,
+                    "ignored": 0,  # sast, backport, art bugs
                     "bugs_urls": [],
                 },
             )
@@ -762,6 +766,18 @@ def process_jira_bugs(bugs, developers, quick=False):
                 # no valid assignee found, skip this bug
                 continue
 
+        # Include the bug if it's not SAST, ART or a backport
+        include = True
+        for label in bug.fields.labels:
+            for known_label in IGNORE_LABELS:
+                if label.lower() == known_label.lower():
+                    developers[assignee_mail]["ignored"] += 1
+                    include = False
+
+        if not include:
+            continue
+
+        is_open = True
         if status == "new":
             developers[assignee_mail]["bugs_in_new"] += 1
             # Bugs in NEW state for more than 30 days
@@ -785,20 +801,23 @@ def process_jira_bugs(bugs, developers, quick=False):
 
         elif status == "post":
             developers[assignee_mail]["bugs_in_post"] += 1
-
-        developers[assignee_mail]["number_of_bugs"] += 1
-
-        if OVN_COMPONENT in components:
-            developers[assignee_mail]["number_of_ovnk_bugs"] += 1
-        elif SDN_COMPONENT in components:
-            developers[assignee_mail]["number_of_osdn_bugs"] += 1
-        elif ESCALATIONS_COMPONENT in components:
-            developers[assignee_mail]["number_of_escalations"] += 1
         else:
-            developers[assignee_mail]["number_of_other_bugs"] += 1
+            is_open = False
+        # Include the bug if it's in new, assigned or post state
+        if is_open:
+            developers[assignee_mail]["number_of_bugs"] += 1
 
-        developers[assignee_mail]["bugs_urls"].append(url)
-        developers[assignee_mail]["points"] += PRIORITY_WEIGHTS[priority]
+            if OVN_COMPONENT in components:
+                developers[assignee_mail]["number_of_ovnk_bugs"] += 1
+            elif SDN_COMPONENT in components:
+                developers[assignee_mail]["number_of_osdn_bugs"] += 1
+            elif ESCALATIONS_COMPONENT in components:
+                developers[assignee_mail]["number_of_escalations"] += 1
+            else:
+                developers[assignee_mail]["number_of_other_bugs"] += 1
+
+            developers[assignee_mail]["bugs_urls"].append(url)
+            developers[assignee_mail]["points"] += PRIORITY_WEIGHTS[priority]
 
     if not quick:
         # for each developer, issue a new query and count the number of
@@ -927,7 +946,7 @@ def print_summary_table(developers, quick=False):
         + colors.END
     )
     # Rank list starts with 1, which means developer least overloaded at the moment
-    headers = ["#", "Developer", "Points", "Bugs", "NEW", "ASSIGNED", "POST"]
+    headers = ["#", "Developer", "Points", "Bugs", "NEW", "ASSIGNED", "POST", "SAST/ART/BACKPORTS"]
     if not quick:
         headers.append("Assigned\n <=21 days")
     lines = []
@@ -940,6 +959,7 @@ def print_summary_table(developers, quick=False):
             v["bugs_in_new"],
             v["bugs_in_assigned"],
             v["bugs_in_post"],
+            v["ignored"],
         ]
         if not quick:
             new_line.append(v["recently_assigned"])
