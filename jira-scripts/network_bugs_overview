@@ -762,6 +762,7 @@ def process_jira_bugs(bugs, developers, quick=False):
                 # no valid assignee found, skip this bug
                 continue
 
+        is_open = True
         if status == "new":
             developers[assignee_mail]["bugs_in_new"] += 1
             # Bugs in NEW state for more than 30 days
@@ -785,20 +786,23 @@ def process_jira_bugs(bugs, developers, quick=False):
 
         elif status == "post":
             developers[assignee_mail]["bugs_in_post"] += 1
-
-        developers[assignee_mail]["number_of_bugs"] += 1
-
-        if OVN_COMPONENT in components:
-            developers[assignee_mail]["number_of_ovnk_bugs"] += 1
-        elif SDN_COMPONENT in components:
-            developers[assignee_mail]["number_of_osdn_bugs"] += 1
-        elif ESCALATIONS_COMPONENT in components:
-            developers[assignee_mail]["number_of_escalations"] += 1
         else:
-            developers[assignee_mail]["number_of_other_bugs"] += 1
+            is_open = False
+        # Include the bug if it's in new, assigned or post state
+        if is_open:
+            developers[assignee_mail]["number_of_bugs"] += 1
 
-        developers[assignee_mail]["bugs_urls"].append(url)
-        developers[assignee_mail]["points"] += PRIORITY_WEIGHTS[priority]
+            if OVN_COMPONENT in components:
+                developers[assignee_mail]["number_of_ovnk_bugs"] += 1
+            elif SDN_COMPONENT in components:
+                developers[assignee_mail]["number_of_osdn_bugs"] += 1
+            elif ESCALATIONS_COMPONENT in components:
+                developers[assignee_mail]["number_of_escalations"] += 1
+            else:
+                developers[assignee_mail]["number_of_other_bugs"] += 1
+
+            developers[assignee_mail]["bugs_urls"].append(url)
+            developers[assignee_mail]["points"] += PRIORITY_WEIGHTS[priority]
 
     if not quick:
         # for each developer, issue a new query and count the number of
