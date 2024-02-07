@@ -904,7 +904,8 @@ def print_results(developers, stale_bugs, print_stale_bugs=False, quick=False):
                     ASSIGN_WINDOW_DAYS, v["recently_assigned"]
                 )
             )
-        print("  Bug URLs:    {}".format(v["bugs_urls"]))
+        bugs_urls = ("\n\t\t- " + ("\n\t\t- ".join(v["bugs_urls"])))
+        print("  Bug URLs:    {}".format(bugs_urls))
         print("")
 
     print(colors.HEADER + "\nBug status explained:" + colors.END)
