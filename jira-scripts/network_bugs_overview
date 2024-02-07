@@ -102,7 +102,6 @@ GENERIC_COMPONENT = "networking"
 SDN_COMPONENT = "networking / openshift-sdn"
 OVN_COMPONENT = "networking / ovn-kubernetes"
 INGRESS_FW_COMPONENT = "networking / ingress-node-firewall"
-METAL_LB_COMPONENT = "networking / metal LB"
 CNO_COMPONENT = "networking / cluster-network-operator"
 CNCC_COMPONENT = "networking / cloud-network-config-controller"
 NETWORK_TOOLS_COMPONENT = "networking / network-tools"
@@ -113,7 +112,6 @@ TEAM_COMPONENTS = (
     OVN_COMPONENT,
     CNCC_COMPONENT,
     INGRESS_FW_COMPONENT,
-    METAL_LB_COMPONENT,
     CNO_COMPONENT,
     NETWORK_TOOLS_COMPONENT,
 )
@@ -922,7 +920,8 @@ def print_results(developers, stale_bugs, print_stale_bugs=False, quick=False):
                     ASSIGN_WINDOW_DAYS, v["recently_assigned"]
                 )
             )
-        print("  Bug URLs:    {}".format(v["bugs_urls"]))
+        bugs_urls = ("\n\t\t- " + ("\n\t\t- ".join(v["bugs_urls"])))
+        print("  Bug URLs:    {}".format(bugs_urls))
         print("")
 
     print(colors.HEADER + "\nBug status explained:" + colors.END)
