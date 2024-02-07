@@ -23,6 +23,7 @@ class colors:
 JIRA_EPIC_FOR_GITHUB_ISSUES = "SDN-4175"
 GITHUB_ISSUES_LABEL = "ci-flake"
 DEFAULT_JIRA_ASSIGNEE = "bbennett"
+EXTERNAL_JIRA_ASSIGNEE = "external" # placeholder for all assignees not in the team list
 
 RH_DEVELOPERS = (
     "bpickard",
@@ -36,6 +37,7 @@ RH_DEVELOPERS = (
     "rravaiol",
     "sseethar",
     "trozet",
+    "external",  # placeholder for bugs in our components owned by external memebers
 )
 
 GITHUB_TO_JIRA_USERS = {
@@ -61,6 +63,7 @@ BACKPORT_LABEL = "SDN:Backport"
 SCAN_LABELS = ["SDN-SAST-Scan", "SDN-ART-BUMP"]
 IGNORE_LABELS = [BACKPORT_LABEL, *SCAN_LABELS]
 
+EXTERNAL_LABEL = "SDN-EXTERNAL-TEAM-MEMBER"
 
 # We're not using severity anymore when estimating workload, let's just keep the
 # following as comment for future reference if ever we need to use it again.
@@ -740,6 +743,8 @@ def process_jira_bugs(bugs, developers, quick=False):
     # bugs that have been in new state for more than 30 days (arbitary time window)
     stale_bugs = {}
     default_assignee, default_assignee_mail = get_username_and_usermail_from_assignee(DEFAULT_JIRA_ASSIGNEE)  # bbennett
+    external_assignee, external_assignee_mail = get_username_and_usermail_from_assignee(EXTERNAL_JIRA_ASSIGNEE)
+
     for bug in bugs:
         assignee = bug.get_field("assignee").name if bug.get_field("assignee") else None
         if not assignee:
@@ -771,8 +776,9 @@ def process_jira_bugs(bugs, developers, quick=False):
             if tmp_email and tmp_email in developers:
                 assignee_user, assignee_mail = tmp_assignee, tmp_email
             else:
-                # no valid assignee found, skip this bug
-                continue
+                # no valid assignee found, it's a bug on our components, but owned by somebody outside our team
+                assignee_user, assignee_mail = external_assignee, external_assignee_mail
+
         # Include the bug if it's unresolved: new, assigned or post state
         if status not in ("new", "assigned", "on_dev", "post"):
             continue
@@ -834,7 +840,8 @@ def process_jira_bugs(bugs, developers, quick=False):
         # for each developer, issue a new query and count the number of
         # recently assigned bugs (open or closed)
         for dev in developers:
-            developers[dev]["recently_assigned"] = count_recently_assigned_bugs(dev)
+            if dev != external_assignee_mail:
+                developers[dev]["recently_assigned"] = count_recently_assigned_bugs(dev)
 
     return developers, stale_bugs
 
@@ -942,6 +949,11 @@ def print_results(developers, stale_bugs, print_stale_bugs=False, quick=False):
 
 
 def print_summary_table(developers, quick=False):
+    # Remove external devs from the count
+    _, external_assignee_mail = get_username_and_usermail_from_assignee(EXTERNAL_JIRA_ASSIGNEE)
+    external_data = []
+    if external_assignee_mail in developers:
+        external_data = developers.pop(external_assignee_mail)
     # Sorting the list by points field
     ordered_by_points = collections.OrderedDict(
         sorted(developers.items(), key=lambda x: x[1]["points"])
@@ -959,7 +971,7 @@ def print_summary_table(developers, quick=False):
     # Rank list starts with 1, which means developer least overloaded at the moment
     headers = ["#", "Developer", "Points", "Bugs", "NEW", "ASSIGNED", "POST", "Backports", "SAST/ART", "Total"]
     if not quick:
-        headers.append("Assigned\n <=21 days")
+        headers.insert(-1, "Assigned\n <=21 days")
     lines = []
     for rank, (k, v) in enumerate(ordered_by_points.items()):
         new_line = [
@@ -975,8 +987,10 @@ def print_summary_table(developers, quick=False):
             v["number_of_bugs"] + v["backport_bugs"] + v["scan_bugs"]
         ]
         if not quick:
-            new_line.append(v["recently_assigned"])
+            # last but one position is for recently assigned, keep last position is for total
+            new_line.insert(-1, v["recently_assigned"])
         lines.append(new_line)
+
 
     # add a "total" line
     num = sum(ordered_by_points[dev]["number_of_bugs"] for dev in ordered_by_points)
@@ -993,7 +1007,29 @@ def print_summary_table(developers, quick=False):
 
     lines.append([])
     lines.append(total_line)
-    print(tabulate(lines, headers=headers))
+
+    # add a line for bugs owned by developers not in our team
+    if external_data:
+        external_line = [
+            "",
+            "External",
+            external_data["points"],
+            external_data["number_of_bugs"],
+            external_data["bugs_in_new"],
+            external_data["bugs_in_assigned"],
+            external_data["bugs_in_post"],
+            external_data["backport_bugs"],
+            external_data["scan_bugs"],
+            external_data["number_of_bugs"] + external_data["backport_bugs"] + external_data["scan_bugs"]
+        ]
+        if not quick:
+            # last but one position is for recently assigned, keep last position is for total
+            external_line.insert(-1, "")  # not really feasible with the limitations of our jira server
+
+        lines.append([])
+        lines.append(external_line)
+
+    print(tabulate(lines, headers=headers, stralign="right"))
 
     explanation_message = """
 Points are calculated according to bug priority:
@@ -1008,7 +1044,7 @@ Points are calculated according to bug priority:
         **PRIORITY_WEIGHTS
     )
     if not quick:
-        explanation_message += "The 'Assigned <=21 days' column includes unresolved and resolved bugs, so it's not to be compared with all other columns, which only show unresolved bugs.\n"
+        explanation_message += "The 'Assigned <=21 days' column includes unresolved and resolved bugs, so it's not to be compared with all other columns, which only show unresolved bugs.\n "
     print(explanation_message)
 
 
