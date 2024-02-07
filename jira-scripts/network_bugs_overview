@@ -57,8 +57,10 @@ ALIASES_TO_USERNAMES = {
     "surya": "sseethar",
 }
 
+BACKPORT_LABEL = "SDN:Backport"
+SCAN_LABELS = ["SDN-SAST-Scan", "SDN-ART-BUMP"]
+IGNORE_LABELS = [BACKPORT_LABEL, *SCAN_LABELS]
 
-IGNORE_LABELS = ("SDN-SAST-Scan", "SDN:Backport", "SDN-ART-BUMP")
 
 # We're not using severity anymore when estimating workload, let's just keep the
 # following as comment for future reference if ever we need to use it again.
@@ -139,7 +141,8 @@ def init_developers_dict():
                     "bugs_in_assigned": 0,
                     "bugs_in_post": 0,
                     "recently_assigned": 0,
-                    "ignored": 0,  # sast, backport, art bugs
+                    "scan_bugs": 0,  # sast, art bugs
+                    "backport_bugs": 0,
                     "bugs_urls": [],
                 },
             )
@@ -736,6 +739,7 @@ def was_jira_bug_recently_assigned(bug):
 def process_jira_bugs(bugs, developers, quick=False):
     # bugs that have been in new state for more than 30 days (arbitary time window)
     stale_bugs = {}
+    default_assignee, default_assignee_mail = get_username_and_usermail_from_assignee(DEFAULT_JIRA_ASSIGNEE)  # bbennett
     for bug in bugs:
         assignee = bug.get_field("assignee").name if bug.get_field("assignee") else None
         if not assignee:
@@ -756,6 +760,10 @@ def process_jira_bugs(bugs, developers, quick=False):
         # an assignee in jira bugs is very often a developer's official email address, but
         # it might also be just a username.
         if assignee_mail not in developers:
+            # skip if it's assigned to bbennett
+            if assignee_mail == default_assignee_mail:
+                continue
+
             # check if it's a known alias
             tmp_assignee, tmp_email = get_username_and_usermail_from_alias(
                 assignee_user
@@ -765,19 +773,26 @@ def process_jira_bugs(bugs, developers, quick=False):
             else:
                 # no valid assignee found, skip this bug
                 continue
+        # Include the bug if it's unresolved: new, assigned or post state
+        if status not in ("new", "assigned", "on_dev", "post"):
+            continue
 
-        # Include the bug if it's not SAST, ART or a backport
+        developers[assignee_mail]["bugs_urls"].append(url)
+
+        # Include the bug if it's not SAST, ART or a backport, which we count separately
         include = True
         for label in bug.fields.labels:
             for known_label in IGNORE_LABELS:
                 if label.lower() == known_label.lower():
-                    developers[assignee_mail]["ignored"] += 1
+                    if label.lower() == BACKPORT_LABEL.lower():
+                        developers[assignee_mail]["backport_bugs"] += 1
+                    else:
+                        developers[assignee_mail]["scan_bugs"] += 1
                     include = False
 
         if not include:
             continue
 
-        is_open = True
         if status == "new":
             developers[assignee_mail]["bugs_in_new"] += 1
             # Bugs in NEW state for more than 30 days
@@ -801,23 +816,19 @@ def process_jira_bugs(bugs, developers, quick=False):
 
         elif status == "post":
             developers[assignee_mail]["bugs_in_post"] += 1
+
+        developers[assignee_mail]["number_of_bugs"] += 1
+
+        if OVN_COMPONENT in components:
+            developers[assignee_mail]["number_of_ovnk_bugs"] += 1
+        elif SDN_COMPONENT in components:
+            developers[assignee_mail]["number_of_osdn_bugs"] += 1
+        elif ESCALATIONS_COMPONENT in components:
+            developers[assignee_mail]["number_of_escalations"] += 1
         else:
-            is_open = False
-        # Include the bug if it's in new, assigned or post state
-        if is_open:
-            developers[assignee_mail]["number_of_bugs"] += 1
+            developers[assignee_mail]["number_of_other_bugs"] += 1
 
-            if OVN_COMPONENT in components:
-                developers[assignee_mail]["number_of_ovnk_bugs"] += 1
-            elif SDN_COMPONENT in components:
-                developers[assignee_mail]["number_of_osdn_bugs"] += 1
-            elif ESCALATIONS_COMPONENT in components:
-                developers[assignee_mail]["number_of_escalations"] += 1
-            else:
-                developers[assignee_mail]["number_of_other_bugs"] += 1
-
-            developers[assignee_mail]["bugs_urls"].append(url)
-            developers[assignee_mail]["points"] += PRIORITY_WEIGHTS[priority]
+        developers[assignee_mail]["points"] += PRIORITY_WEIGHTS[priority]
 
     if not quick:
         # for each developer, issue a new query and count the number of
@@ -946,7 +957,7 @@ def print_summary_table(developers, quick=False):
         + colors.END
     )
     # Rank list starts with 1, which means developer least overloaded at the moment
-    headers = ["#", "Developer", "Points", "Bugs", "NEW", "ASSIGNED", "POST", "SAST/ART/BACKPORTS"]
+    headers = ["#", "Developer", "Points", "Bugs", "NEW", "ASSIGNED", "POST", "Backports", "SAST/ART", "Total"]
     if not quick:
         headers.append("Assigned\n <=21 days")
     lines = []
@@ -959,7 +970,9 @@ def print_summary_table(developers, quick=False):
             v["bugs_in_new"],
             v["bugs_in_assigned"],
             v["bugs_in_post"],
-            v["ignored"],
+            v["backport_bugs"],
+            v["scan_bugs"],
+            v["number_of_bugs"] + v["backport_bugs"] + v["scan_bugs"]
         ]
         if not quick:
             new_line.append(v["recently_assigned"])
@@ -970,11 +983,13 @@ def print_summary_table(developers, quick=False):
     num_new = sum(ordered_by_points[dev]["bugs_in_new"] for dev in ordered_by_points)
     num_assigned = sum(ordered_by_points[dev]["bugs_in_assigned"] for dev in ordered_by_points)
     num_post = sum(ordered_by_points[dev]["bugs_in_post"] for dev in ordered_by_points)
-    num_ignored = sum(ordered_by_points[dev]["ignored"] for dev in ordered_by_points)
-    total_line = ["", "TOTAL", "", num, num_new, num_assigned, num_post, num_ignored]
+    num_backports = sum(ordered_by_points[dev]["backport_bugs"] for dev in ordered_by_points)
+    num_scan = sum(ordered_by_points[dev]["scan_bugs"] for dev in ordered_by_points)
+    num_total = num + num_backports + num_scan
+    total_line = ["", "TOTAL", "", num, num_new, num_assigned, num_post, num_backports, num_scan, num_total]
     if not quick:
         num_recently_assigned = sum(ordered_by_points[dev]["recently_assigned"] for dev in ordered_by_points)
-        total_line.append(num_recently_assigned)
+        total_line.insert(-1, num_recently_assigned)
 
     lines.append([])
     lines.append(total_line)
@@ -988,9 +1003,12 @@ Points are calculated according to bug priority:
 - normal:      {normal}
 - minor:        {minor}
 - undefined:    {undefined}
+
 """.format(
         **PRIORITY_WEIGHTS
     )
+    if not quick:
+        explanation_message += "The 'Assigned <=21 days' column includes unresolved and resolved bugs, so it's not to be compared with all other columns, which only show unresolved bugs.\n"
     print(explanation_message)
 
 
