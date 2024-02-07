@@ -23,27 +23,25 @@ class colors:
 JIRA_EPIC_FOR_GITHUB_ISSUES = "SDN-4175"
 GITHUB_ISSUES_LABEL = "ci-flake"
 DEFAULT_JIRA_ASSIGNEE = "bbennett"
+EXTERNAL_JIRA_ASSIGNEE = "external" # placeholder for all assignees not in the team list
 
 RH_DEVELOPERS = (
     "bpickard",
-    # "bnemec",
-    # "dougsland",
-    # "ffernand",
     "jcaamano",
     "jluhrsen",
     "jtanenba",
-    # "mcambria",
     "mkennell",
     "npinaeva",
     "pdiak",
     "pepalani",
     "rravaiol",
     "sseethar",
+    "trozet",
+    "external",  # placeholder for bugs in our components owned by external memebers
 )
 
 GITHUB_TO_JIRA_USERS = {
     "bpickard22": "bpickard",
-    # "flavio-fernandes": "ffernand",
     "jcaamano": "jcaamano",
     "jluhrsen": "jluhrsen",
     "JacobTanenbaum": "jtanenba",
@@ -61,8 +59,11 @@ ALIASES_TO_USERNAMES = {
     "surya": "sseethar",
 }
 
+BACKPORT_LABEL = "SDN:Backport"
+SCAN_LABELS = ["SDN-SAST-Scan", "SDN-ART-BUMP"]
+IGNORE_LABELS = [BACKPORT_LABEL, *SCAN_LABELS]
 
-IGNORE_LABELS = ("SDN-SAST-Scan", "SDN:Backport", "SDN-ART-BUMP")
+EXTERNAL_LABEL = "SDN-EXTERNAL-TEAM-MEMBER"
 
 # We're not using severity anymore when estimating workload, let's just keep the
 # following as comment for future reference if ever we need to use it again.
@@ -143,7 +144,8 @@ def init_developers_dict():
                     "bugs_in_assigned": 0,
                     "bugs_in_post": 0,
                     "recently_assigned": 0,
-                    "ignored": 0,  # sast, backport, art bugs
+                    "scan_bugs": 0,  # sast, art bugs
+                    "backport_bugs": 0,
                     "bugs_urls": [],
                 },
             )
@@ -156,11 +158,23 @@ def init_developers_dict():
 def retrieve_github_issues():
     github_repo = "ovn-org/ovn-kubernetes"
     # (state=open to only fetch open issues)
-    github_api = f"https://api.github.com/repos/{github_repo}/issues?labels={GITHUB_ISSUES_LABEL}&state=all"
-    response = requests.get(github_api)
+    github_api = f"https://api.github.com/repos/{github_repo}/issues?labels={GITHUB_ISSUES_LABEL}&state=all&per_page=100"
+    github_issues = []
+    parse_next_page = True
+    page = 1
+    while parse_next_page:
+        response = requests.get(github_api + f"&page={page}")
+        retrieved_issues = response.json()
+        if retrieved_issues:
+            github_issues.extend(retrieved_issues)
+            page += 1
+        else:
+            parse_next_page = False
     # Filter out pull requests, which are identified by the pull_request key.
     # https://docs.github.com/en/rest/issues/issues?apiVersion=2022-11-28
-    github_issues = [x for x in response.json() if "pull_request" not in x]
+    # WARNING: The is:issue keyword doesn't work, contrary to what the documentation says:
+    # https://docs.github.com/en/rest/search/search?apiVersion=2022-11-28#search-issues-and-pull-requests
+    github_issues = [x for x in github_issues if "pull_request" not in x]
     print(
         f"- Found {len(github_issues)} github issues with {GITHUB_ISSUES_LABEL} label"
     )
@@ -192,16 +206,10 @@ def get_query_for_unresolved_jira_stories_tracking_github_issues():
 
 
 def get_jira_assignee_from_github_user(github_user):
-    # When creating a story, our jira server is not really consistent in the
+    # When we read or create a story, our jira server is not really consistent in the
     # assignee format it accepts:
     # - if a user has an alias, the assignee should be the alias user name (not the email address)
     # - if a user has no alias, the assignee should be the email address
-    #
-    # When we read a story:
-    # - if a user has an alias, the assignee is the original user, not the alias (!)
-    # - if a user has no alias, the assignee is the email address
-    # So separate the output: user for reading, user for writing...
-
     jira_story_assignee = (
         GITHUB_TO_JIRA_USERS.get(github_user) or DEFAULT_JIRA_ASSIGNEE
     )
@@ -211,12 +219,10 @@ def get_jira_assignee_from_github_user(github_user):
     jira_story_assignee_user_alias, _ = get_alias_and_email_alias_from_username(
         jira_story_assignee
     )
-    assignee_value_read = jira_story_assignee_mail
-    assignee_value_write = jira_story_assignee_mail
+    assignee_value = jira_story_assignee_mail
     if jira_story_assignee_user_alias:
-        assignee_value_read = jira_story_assignee
-        assignee_value_write = jira_story_assignee_user_alias
-    return assignee_value_read, assignee_value_write
+        assignee_value = jira_story_assignee
+    return assignee_value
 
 
 def open_or_close_jira_story(jira_client, jira_id, action_open=True, comment=""):
@@ -283,22 +289,22 @@ def align_jira_assignee_with_github(jira_client, github_id, github_dict, jira_id
     github_assignee = github_dict["assignee"]
     jira_assignee = jira_dict["assignee"]
 
-    expected_jira_assignee_read, expected_jira_assignee_write = get_jira_assignee_from_github_user(github_assignee)
-    if jira_assignee == expected_jira_assignee_read:
+    expected_jira_assignee = get_jira_assignee_from_github_user(github_assignee)
+    if jira_assignee == expected_jira_assignee:
         return
 
     print(
         f"- Github issue {github_dict['url']} is assigned to {github_assignee}"
         f" but its jira story {jira_id} is assigned to {jira_assignee} "
-        f"(expected: {expected_jira_assignee_read}). "
+        f"(expected: {expected_jira_assignee}). "
     )
 
     try:
-        jira_client.assign_issue(jira_id, expected_jira_assignee_write)
+        jira_client.assign_issue(jira_id, expected_jira_assignee)
     except Exception as ex:
-        print(f"\t--> Failed to assign {jira_id} to {expected_jira_assignee_write}: {ex}")
+        print(f"\t--> Failed to assign {jira_id} to {expected_jira_assignee}: {ex}")
     else:
-        print(f"\tAssigned {jira_id} to {expected_jira_assignee_write}")
+        print(f"\tAssigned {jira_id} to {expected_jira_assignee}")
 
 
 def align_jira_with_open_github_issues(github_issues):
@@ -353,21 +359,21 @@ def align_jira_with_open_github_issues(github_issues):
             new_jira_description = (
                 f"Tracking ovn-kubernetes upstream issue: {github_issue_url}"
             )
-            new_jira_assignee_read, new_jira_assignee_write = get_jira_assignee_from_github_user(github_issue_assignee)
+            new_jira_assignee = get_jira_assignee_from_github_user(github_issue_assignee)
             # Create a new Jira story
             try:
                 new_jira = jira_client.create_issue(
                     project={"key": "SDN"},
-                    summary=new_jira_summary,
+                    summary=new_jira_summary[:255],  # jira summary must be < 255 characters
                     description=new_jira_description,
                     issuetype={"name": "Story"},
-                    assignee={"name": new_jira_assignee_write},
+                    assignee={"name": new_jira_assignee},
                     customfield_12311140=JIRA_EPIC_FOR_GITHUB_ISSUES,
                 )
             except Exception as ex:
                 print(
                     f"could not create story for github issue {github_issue_url} "
-                    f"(summary={new_jira_summary}, assignee={new_jira_assignee_write}, "
+                    f"(summary={new_jira_summary}, assignee={new_jira_assignee}, "
                     f"description={new_jira_description}, error={ex})"
                 )
             else:
@@ -376,7 +382,7 @@ def align_jira_with_open_github_issues(github_issues):
                 matching_jira_details[new_jira.key] = {
                     "is_open": True,
                     "url": get_jira_issue_url(new_jira.key),
-                    "assignee": new_jira_assignee_read}
+                    "assignee": new_jira_assignee}
 
     # Print a list of created jira stories
     if created_jira_stories:
@@ -736,6 +742,9 @@ def was_jira_bug_recently_assigned(bug):
 def process_jira_bugs(bugs, developers, quick=False):
     # bugs that have been in new state for more than 30 days (arbitary time window)
     stale_bugs = {}
+    default_assignee, default_assignee_mail = get_username_and_usermail_from_assignee(DEFAULT_JIRA_ASSIGNEE)  # bbennett
+    external_assignee, external_assignee_mail = get_username_and_usermail_from_assignee(EXTERNAL_JIRA_ASSIGNEE)
+
     for bug in bugs:
         assignee = bug.get_field("assignee").name if bug.get_field("assignee") else None
         if not assignee:
@@ -756,6 +765,10 @@ def process_jira_bugs(bugs, developers, quick=False):
         # an assignee in jira bugs is very often a developer's official email address, but
         # it might also be just a username.
         if assignee_mail not in developers:
+            # skip if it's assigned to bbennett
+            if assignee_mail == default_assignee_mail:
+                continue
+
             # check if it's a known alias
             tmp_assignee, tmp_email = get_username_and_usermail_from_alias(
                 assignee_user
@@ -763,21 +776,29 @@ def process_jira_bugs(bugs, developers, quick=False):
             if tmp_email and tmp_email in developers:
                 assignee_user, assignee_mail = tmp_assignee, tmp_email
             else:
-                # no valid assignee found, skip this bug
-                continue
+                # no valid assignee found, it's a bug on our components, but owned by somebody outside our team
+                assignee_user, assignee_mail = external_assignee, external_assignee_mail
 
-        # Include the bug if it's not SAST, ART or a backport
+        # Include the bug if it's unresolved: new, assigned or post state
+        if status not in ("new", "assigned", "on_dev", "post"):
+            continue
+
+        developers[assignee_mail]["bugs_urls"].append(url)
+
+        # Include the bug if it's not SAST, ART or a backport, which we count separately
         include = True
         for label in bug.fields.labels:
             for known_label in IGNORE_LABELS:
                 if label.lower() == known_label.lower():
-                    developers[assignee_mail]["ignored"] += 1
+                    if label.lower() == BACKPORT_LABEL.lower():
+                        developers[assignee_mail]["backport_bugs"] += 1
+                    else:
+                        developers[assignee_mail]["scan_bugs"] += 1
                     include = False
 
         if not include:
             continue
 
-        is_open = True
         if status == "new":
             developers[assignee_mail]["bugs_in_new"] += 1
             # Bugs in NEW state for more than 30 days
@@ -801,29 +822,26 @@ def process_jira_bugs(bugs, developers, quick=False):
 
         elif status == "post":
             developers[assignee_mail]["bugs_in_post"] += 1
+
+        developers[assignee_mail]["number_of_bugs"] += 1
+
+        if OVN_COMPONENT in components:
+            developers[assignee_mail]["number_of_ovnk_bugs"] += 1
+        elif SDN_COMPONENT in components:
+            developers[assignee_mail]["number_of_osdn_bugs"] += 1
+        elif ESCALATIONS_COMPONENT in components:
+            developers[assignee_mail]["number_of_escalations"] += 1
         else:
-            is_open = False
-        # Include the bug if it's in new, assigned or post state
-        if is_open:
-            developers[assignee_mail]["number_of_bugs"] += 1
+            developers[assignee_mail]["number_of_other_bugs"] += 1
 
-            if OVN_COMPONENT in components:
-                developers[assignee_mail]["number_of_ovnk_bugs"] += 1
-            elif SDN_COMPONENT in components:
-                developers[assignee_mail]["number_of_osdn_bugs"] += 1
-            elif ESCALATIONS_COMPONENT in components:
-                developers[assignee_mail]["number_of_escalations"] += 1
-            else:
-                developers[assignee_mail]["number_of_other_bugs"] += 1
-
-            developers[assignee_mail]["bugs_urls"].append(url)
-            developers[assignee_mail]["points"] += PRIORITY_WEIGHTS[priority]
+        developers[assignee_mail]["points"] += PRIORITY_WEIGHTS[priority]
 
     if not quick:
         # for each developer, issue a new query and count the number of
         # recently assigned bugs (open or closed)
         for dev in developers:
-            developers[dev]["recently_assigned"] = count_recently_assigned_bugs(dev)
+            if dev != external_assignee_mail:
+                developers[dev]["recently_assigned"] = count_recently_assigned_bugs(dev)
 
     return developers, stale_bugs
 
@@ -931,6 +949,11 @@ def print_results(developers, stale_bugs, print_stale_bugs=False, quick=False):
 
 
 def print_summary_table(developers, quick=False):
+    # Remove external devs from the count
+    _, external_assignee_mail = get_username_and_usermail_from_assignee(EXTERNAL_JIRA_ASSIGNEE)
+    external_data = []
+    if external_assignee_mail in developers:
+        external_data = developers.pop(external_assignee_mail)
     # Sorting the list by points field
     ordered_by_points = collections.OrderedDict(
         sorted(developers.items(), key=lambda x: x[1]["points"])
@@ -946,9 +969,9 @@ def print_summary_table(developers, quick=False):
         + colors.END
     )
     # Rank list starts with 1, which means developer least overloaded at the moment
-    headers = ["#", "Developer", "Points", "Bugs", "NEW", "ASSIGNED", "POST", "SAST/ART/BACKPORTS"]
+    headers = ["#", "Developer", "Points", "Bugs", "NEW", "ASSIGNED", "POST", "Backports", "SAST/ART", "Total"]
     if not quick:
-        headers.append("Assigned\n <=21 days")
+        headers.insert(-1, "Assigned\n <=21 days")
     lines = []
     for rank, (k, v) in enumerate(ordered_by_points.items()):
         new_line = [
@@ -959,12 +982,54 @@ def print_summary_table(developers, quick=False):
             v["bugs_in_new"],
             v["bugs_in_assigned"],
             v["bugs_in_post"],
-            v["ignored"],
+            v["backport_bugs"],
+            v["scan_bugs"],
+            v["number_of_bugs"] + v["backport_bugs"] + v["scan_bugs"]
         ]
         if not quick:
-            new_line.append(v["recently_assigned"])
+            # last but one position is for recently assigned, keep last position is for total
+            new_line.insert(-1, v["recently_assigned"])
         lines.append(new_line)
-    print(tabulate(lines, headers=headers))
+
+
+    # add a "total" line
+    num = sum(ordered_by_points[dev]["number_of_bugs"] for dev in ordered_by_points)
+    num_new = sum(ordered_by_points[dev]["bugs_in_new"] for dev in ordered_by_points)
+    num_assigned = sum(ordered_by_points[dev]["bugs_in_assigned"] for dev in ordered_by_points)
+    num_post = sum(ordered_by_points[dev]["bugs_in_post"] for dev in ordered_by_points)
+    num_backports = sum(ordered_by_points[dev]["backport_bugs"] for dev in ordered_by_points)
+    num_scan = sum(ordered_by_points[dev]["scan_bugs"] for dev in ordered_by_points)
+    num_total = num + num_backports + num_scan
+    total_line = ["", "TOTAL", "", num, num_new, num_assigned, num_post, num_backports, num_scan, num_total]
+    if not quick:
+        num_recently_assigned = sum(ordered_by_points[dev]["recently_assigned"] for dev in ordered_by_points)
+        total_line.insert(-1, num_recently_assigned)
+
+    lines.append([])
+    lines.append(total_line)
+
+    # add a line for bugs owned by developers not in our team
+    if external_data:
+        external_line = [
+            "",
+            "External",
+            external_data["points"],
+            external_data["number_of_bugs"],
+            external_data["bugs_in_new"],
+            external_data["bugs_in_assigned"],
+            external_data["bugs_in_post"],
+            external_data["backport_bugs"],
+            external_data["scan_bugs"],
+            external_data["number_of_bugs"] + external_data["backport_bugs"] + external_data["scan_bugs"]
+        ]
+        if not quick:
+            # last but one position is for recently assigned, keep last position is for total
+            external_line.insert(-1, "")  # not really feasible with the limitations of our jira server
+
+        lines.append([])
+        lines.append(external_line)
+
+    print(tabulate(lines, headers=headers, stralign="right"))
 
     explanation_message = """
 Points are calculated according to bug priority:
@@ -974,9 +1039,12 @@ Points are calculated according to bug priority:
 - normal:      {normal}
 - minor:        {minor}
 - undefined:    {undefined}
+
 """.format(
         **PRIORITY_WEIGHTS
     )
+    if not quick:
+        explanation_message += "The 'Assigned <=21 days' column includes unresolved and resolved bugs, so it's not to be compared with all other columns, which only show unresolved bugs.\n "
     print(explanation_message)
 
 
