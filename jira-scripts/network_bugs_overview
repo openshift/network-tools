@@ -26,24 +26,20 @@ DEFAULT_JIRA_ASSIGNEE = "bbennett"
 
 RH_DEVELOPERS = (
     "bpickard",
-    # "bnemec",
-    # "dougsland",
-    # "ffernand",
     "jcaamano",
     "jluhrsen",
     "jtanenba",
-    # "mcambria",
     "mkennell",
     "npinaeva",
     "pdiak",
     "pepalani",
     "rravaiol",
     "sseethar",
+    "trozet",
 )
 
 GITHUB_TO_JIRA_USERS = {
     "bpickard22": "bpickard",
-    # "flavio-fernandes": "ffernand",
     "jcaamano": "jcaamano",
     "jluhrsen": "jluhrsen",
     "JacobTanenbaum": "jtanenba",
