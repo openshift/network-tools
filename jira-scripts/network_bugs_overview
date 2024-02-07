@@ -156,11 +156,23 @@ def init_developers_dict():
 def retrieve_github_issues():
     github_repo = "ovn-org/ovn-kubernetes"
     # (state=open to only fetch open issues)
-    github_api = f"https://api.github.com/repos/{github_repo}/issues?labels={GITHUB_ISSUES_LABEL}&state=all"
-    response = requests.get(github_api)
+    github_api = f"https://api.github.com/repos/{github_repo}/issues?labels={GITHUB_ISSUES_LABEL}&state=all&per_page=100"
+    github_issues = []
+    parse_next_page = True
+    page = 1
+    while parse_next_page:
+        response = requests.get(github_api + f"&page={page}")
+        retrieved_issues = response.json()
+        if retrieved_issues:
+            github_issues.extend(retrieved_issues)
+            page += 1
+        else:
+            parse_next_page = False
     # Filter out pull requests, which are identified by the pull_request key.
     # https://docs.github.com/en/rest/issues/issues?apiVersion=2022-11-28
-    github_issues = [x for x in response.json() if "pull_request" not in x]
+    # WARNING: The is:issue keyword doesn't work, contrary to what the documentation says:
+    # https://docs.github.com/en/rest/search/search?apiVersion=2022-11-28#search-issues-and-pull-requests
+    github_issues = [x for x in github_issues if "pull_request" not in x]
     print(
         f"- Found {len(github_issues)} github issues with {GITHUB_ISSUES_LABEL} label"
     )
