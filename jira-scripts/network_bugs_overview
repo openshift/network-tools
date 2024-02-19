@@ -6,7 +6,7 @@ from dateutil.parser import parse
 import re
 import requests
 import sys
-from tabulate import tabulate
+from tabulate import tabulate, SEPARATING_LINE
 import time
 
 from dateutil import parser
@@ -24,6 +24,7 @@ JIRA_EPIC_FOR_GITHUB_ISSUES = "SDN-4175"
 GITHUB_ISSUES_LABEL = "ci-flake"
 DEFAULT_JIRA_ASSIGNEE = "bbennett"
 EXTERNAL_JIRA_ASSIGNEE = "external" # placeholder for all assignees not in the team list
+SDN_TEAM_BOT_ASSIGNEE = "sdn-team-bot"
 
 RH_DEVELOPERS = (
     "bpickard",
@@ -37,7 +38,8 @@ RH_DEVELOPERS = (
     "rravaiol",
     "sseethar",
     "trozet",
-    "external",  # placeholder for bugs in our components owned by external memebers
+    EXTERNAL_JIRA_ASSIGNEE,  # placeholder for bugs in our components owned by external memebers
+    SDN_TEAM_BOT_ASSIGNEE, # special user acting as our team backlog
 )
 
 GITHUB_TO_JIRA_USERS = {
@@ -947,12 +949,42 @@ def print_results(developers, stale_bugs, print_stale_bugs=False, quick=False):
     )
 
 
+
+def add_extra_line(lines, new_data, new_data_name, quick=False):
+    if new_data:
+        new_line = [
+            "",
+            new_data_name,
+            new_data["points"],
+            new_data["number_of_bugs"],
+            new_data["bugs_in_new"],
+            new_data["bugs_in_assigned"],
+            new_data["bugs_in_post"],
+            new_data["backport_bugs"],
+            new_data["scan_bugs"],
+            new_data["number_of_bugs"] + new_data["backport_bugs"] + new_data["scan_bugs"]
+        ]
+    if not quick:
+        # last but one column is for recently assigned, keep last column is for total
+        new_line.insert(-1, None)
+
+    lines.append(new_line)
+    return lines
+
+
 def print_summary_table(developers, quick=False):
     # Remove external devs from the count
     _, external_assignee_mail = get_username_and_usermail_from_assignee(EXTERNAL_JIRA_ASSIGNEE)
+    _, sdn_team_bot_assignee_mail = get_username_and_usermail_from_assignee(SDN_TEAM_BOT_ASSIGNEE)
+
     external_data = []
     if external_assignee_mail in developers:
         external_data = developers.pop(external_assignee_mail)
+
+    sdn_team_bot_data = []
+    if sdn_team_bot_assignee_mail in developers:
+        sdn_team_bot_data = developers.pop(sdn_team_bot_assignee_mail)
+
     # Sorting the list by points field
     ordered_by_points = collections.OrderedDict(
         sorted(developers.items(), key=lambda x: x[1]["points"])
@@ -968,14 +1000,15 @@ def print_summary_table(developers, quick=False):
         + colors.END
     )
     # Rank list starts with 1, which means developer least overloaded at the moment
-    headers = ["#", "Developer", "Points", "Bugs", "NEW", "ASSIGNED", "POST", "Backports", "SAST/ART", "Total"]
+    headers = ["#", "Developer", "Points", "Bugs", "New", "Assigned", "Post", "Backports", "SAST/ART", "Total"]
     if not quick:
         headers.insert(-1, "Assigned\n <=21 days")
     lines = []
-    for rank, (k, v) in enumerate(ordered_by_points.items()):
+    for rank, (dev_email, v) in enumerate(ordered_by_points.items()):
+        dev_username, _ = get_username_and_usermail_from_assignee(dev_email)
         new_line = [
             rank + 1,
-            k,
+            dev_username,
             v["points"],
             v["number_of_bugs"],
             v["bugs_in_new"],
@@ -992,6 +1025,8 @@ def print_summary_table(developers, quick=False):
 
 
     # add a "total" line
+    lines.append(SEPARATING_LINE)
+
     num = sum(ordered_by_points[dev]["number_of_bugs"] for dev in ordered_by_points)
     num_new = sum(ordered_by_points[dev]["bugs_in_new"] for dev in ordered_by_points)
     num_assigned = sum(ordered_by_points[dev]["bugs_in_assigned"] for dev in ordered_by_points)
@@ -999,36 +1034,17 @@ def print_summary_table(developers, quick=False):
     num_backports = sum(ordered_by_points[dev]["backport_bugs"] for dev in ordered_by_points)
     num_scan = sum(ordered_by_points[dev]["scan_bugs"] for dev in ordered_by_points)
     num_total = num + num_backports + num_scan
-    total_line = ["", "TOTAL", "", num, num_new, num_assigned, num_post, num_backports, num_scan, num_total]
+    total_line = ["", "TOTAL", None, num, num_new, num_assigned, num_post, num_backports, num_scan, num_total]
     if not quick:
         num_recently_assigned = sum(ordered_by_points[dev]["recently_assigned"] for dev in ordered_by_points)
         total_line.insert(-1, num_recently_assigned)
 
-    lines.append([])
     lines.append(total_line)
 
-    # add a line for bugs owned by developers not in our team
-    if external_data:
-        external_line = [
-            "",
-            "External",
-            external_data["points"],
-            external_data["number_of_bugs"],
-            external_data["bugs_in_new"],
-            external_data["bugs_in_assigned"],
-            external_data["bugs_in_post"],
-            external_data["backport_bugs"],
-            external_data["scan_bugs"],
-            external_data["number_of_bugs"] + external_data["backport_bugs"] + external_data["scan_bugs"]
-        ]
-        if not quick:
-            # last but one position is for recently assigned, keep last position is for total
-            external_line.insert(-1, "")  # not really feasible with the limitations of our jira server
+    lines = add_extra_line(lines, external_data, "external", quick=quick)
+    lines = add_extra_line(lines, sdn_team_bot_data, "sdn-team-bot", quick=quick)
 
-        lines.append([])
-        lines.append(external_line)
-
-    print(tabulate(lines, headers=headers, stralign="right"))
+    print(tabulate(lines, headers=headers))
 
     explanation_message = """
 Points are calculated according to bug priority:
