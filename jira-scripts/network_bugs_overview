@@ -968,14 +968,15 @@ def print_summary_table(developers, quick=False):
         + colors.END
     )
     # Rank list starts with 1, which means developer least overloaded at the moment
-    headers = ["#", "Developer", "Points", "Bugs", "NEW", "ASSIGNED", "POST", "Backports", "SAST/ART", "Total"]
+    headers = ["#", "Developer", "Points", "Bugs", "New", "Assigned", "Post", "Backports", "SAST/ART", "Total"]
     if not quick:
         headers.insert(-1, "Assigned\n <=21 days")
     lines = []
-    for rank, (k, v) in enumerate(ordered_by_points.items()):
+    for rank, (dev_email, v) in enumerate(ordered_by_points.items()):
+        dev_username, _ = get_username_and_usermail_from_assignee(dev_email)
         new_line = [
             rank + 1,
-            k,
+            dev_username,
             v["points"],
             v["number_of_bugs"],
             v["bugs_in_new"],
@@ -999,7 +1000,7 @@ def print_summary_table(developers, quick=False):
     num_backports = sum(ordered_by_points[dev]["backport_bugs"] for dev in ordered_by_points)
     num_scan = sum(ordered_by_points[dev]["scan_bugs"] for dev in ordered_by_points)
     num_total = num + num_backports + num_scan
-    total_line = ["", "TOTAL", "", num, num_new, num_assigned, num_post, num_backports, num_scan, num_total]
+    total_line = ["", "TOTAL", None, num, num_new, num_assigned, num_post, num_backports, num_scan, num_total]
     if not quick:
         num_recently_assigned = sum(ordered_by_points[dev]["recently_assigned"] for dev in ordered_by_points)
         total_line.insert(-1, num_recently_assigned)
@@ -1028,7 +1029,7 @@ def print_summary_table(developers, quick=False):
         lines.append([])
         lines.append(external_line)
 
-    print(tabulate(lines, headers=headers, stralign="right"))
+    print(tabulate(lines, headers=headers))
 
     explanation_message = """
 Points are calculated according to bug priority:
