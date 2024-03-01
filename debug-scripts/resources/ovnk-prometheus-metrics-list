@@ -1,0 +1,12 @@
+#all ovn-k metrics
+{__name__=~"ovnkube.*"}
+{__name__=~"ovn_.*"}
+#all pod connectivity checks metrics
+pod_network_connectivity_check_count
+pod_network_connectivity_check_dns_resolve_latency_gauge
+pod_network_connectivity_check_tcp_connect_latency_gauge
+#basic etcd health checks
+etcd_disk_backend_commit_duration_seconds_bucket[5m]
+etcd_disk_wal_fsync_duration_seconds_bucket[5m]
+etcd_network_peer_round_trip_time_seconds_bucket[5m]
+etcd_server_leader_changes_seen_total[1h]
