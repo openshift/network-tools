@@ -228,6 +228,7 @@ EOT
       [ ${DB_TYPES[${i}]} = "n" ] && \
       echo "  ${ENV_CMD_PREFIX}_cmd $i \$@" >> ${ENV_FILE}
     done
+    echo "  return" >> ${ENV_FILE}
     cat << EOT >> ${ENV_FILE}
 }
 
@@ -238,6 +239,7 @@ EOT
       [ ${DB_TYPES[${i}]} = "s" ] && \
       echo "  ${ENV_CMD_PREFIX}_cmd $i \$@" >> ${ENV_FILE}
     done
+    echo "  return" >> ${ENV_FILE}
     cat << EOT >> ${ENV_FILE}
 }
 
@@ -258,12 +260,24 @@ EOT
 
 main() {
   # $1 - db dir
-  # $2 - db type
-  # $3 - container engine (docker or podman)
+  # $2 - container engine (docker or podman)
 
   DB_DIR=$(get_full_path "$1")
-  DB_TYPE="${2:-n}"
-  CONTAINER_ENGINE="${3:-docker}"
+
+  # Backwards compatibility: param 2 used to be the db type.
+  # If that was provided, keep calm and carry on. :)
+  CONTAINER_ENGINE="${2:-docker}"
+  case ${CONTAINER_ENGINE} in
+    n) DB_TYPE="n" ; CONTAINER_ENGINE="${3:-docker}" ;;
+    s) DB_TYPE="s" ; CONTAINER_ENGINE="${3:-docker}" ;;
+    all) DB_TYPE="all" ; CONTAINER_ENGINE="${3:-docker}" ;;
+    *) DB_TYPE="n" ; CONTAINER_ENGINE="${3:-docker}" ;;
+  esac
+
+  if [ -z "$DB_TYPE" ]; then
+      echo "ERROR: Unable to determine OVN database type." >&2
+      exit 1
+  fi
 
   if ! command -v jq &> /dev/null; then
     echo "ERROR: jq is not installed. Exiting." >&2
