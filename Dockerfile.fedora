@@ -56,7 +56,7 @@ RUN INSTALL_PKGS="\
     nginx \
     numactl \
     traceroute \
-    wireshark \
+    wireshark-cli \
     conntrack-tools \
     perf \
     iproute \
