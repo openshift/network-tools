@@ -19,7 +19,9 @@ RUN INSTALL_PKGS="\
     bcc \
     bcc-tools \
     conntrack-tools \
+    cri-tools \
     iproute \
+    iptables \
     nginx \
     numactl \
     perf \
