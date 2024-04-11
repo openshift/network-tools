@@ -60,7 +60,7 @@ To run script that are not included in the `network-tools -h` call them directly
 * nginx
 * numactl
 * traceroute
-* wireshark
+* wireshark-cli
 * conntrack-tools
 * perf
 * iproute
