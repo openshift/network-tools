@@ -19,12 +19,16 @@ COPY --from=tools /usr/bin/oc /usr/bin/oc
 RUN INSTALL_PKGS="\
     bash-completion \
     bc \
+    bcc \
+    bcc-tools \
     bind-utils \
     blktrace \
+    conntrack-tools \
     crash \
     e2fsprogs \
     ethtool \
     file \
+    fio \
     git \
     glibc-utils \
     gzip \
@@ -37,32 +41,26 @@ RUN INSTALL_PKGS="\
     ltrace \
     mailx \
     net-tools \
+    nginx \
     nmap-ncat \
+    numactl \
     parted \
     pciutils \
+    perf \
     procps-ng \
     psmisc \
-    perf \
+    python3-bcc \
     strace \
+    stress-ng \
     sysstat \
     tcpdump \
     tmux \
+    traceroute \
     util-linux \
     vim-enhanced \
     wget \
-    xfsprogs \
-    fio \
-    stress-ng \
-    nginx \
-    numactl \
-    traceroute \
     wireshark-cli \
-    conntrack-tools \
-    perf \
-    iproute \
-    bcc \
-    bcc-tools \
-    python3-bcc \
+    xfsprogs \
     " && \
     yum -y install --setopt=tsflags=nodocs --setopt=skip_missing_names_on_install=False $INSTALL_PKGS && \
     yum clean all && rm -rf /var/cache/*
