@@ -1070,7 +1070,14 @@ def print_unassigned_bugs():
     for bug in unassigned_bugs:
         bug_url = get_jira_issue_url(bug)
         bug_summary = bug.get_field("summary")
-        print(f"- [{bug}]({bug_url}) - {bug_summary}")
+        bug_issuetype = bug.get_field("issuetype")
+        if str(bug_issuetype) == "Bug":
+            bug_px_score = bug.get_field("customfield_12322244")
+            if bug_px_score is not None:
+                bug_px_score=int(bug_px_score)
+            print(f"- [{bug}]({bug_url}) - [{bug_px_score}] {bug_summary}")
+        else:
+            print(f"- [{bug}]({bug_url}) - {bug_summary}")
 
 
 def parse_input_args():
