@@ -1071,7 +1071,7 @@ def print_unassigned_bugs():
         bug_url = get_jira_issue_url(bug)
         bug_summary = bug.get_field("summary")
         bug_issuetype = bug.get_field("issuetype")
-        if str(bug_issuetype) == "Bug":
+        if str(bug_issuetype) == "Bug" and str(bug) in "OCPBUGS":
             bug_px_score = bug.get_field("customfield_12322244")
             if bug_px_score is not None:
                 bug_px_score=int(bug_px_score)
