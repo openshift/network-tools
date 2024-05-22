@@ -685,6 +685,13 @@ def run_queries(jira_bugs=True, jira_escalations=False):
 
     return query_dict
 
+def should_bug_be_counted(bug):
+    for label in bug.fields.labels:
+        for known_label in IGNORE_LABELS:
+            if label.lower() == known_label.lower():
+                return False
+    return True
+
 
 def was_jira_bug_recently_assigned(bug):
     # Evaluate whether the bug
@@ -706,6 +713,9 @@ def was_jira_bug_recently_assigned(bug):
     #    'toString': 'Jaime Caamaño Ruiz'}]},
     # skip automatically-generated backports
     if "prow bot" in bug.get_field("creator").displayName.lower():
+        return False
+
+    if not should_bug_be_counted(bug):
         return False
 
     try:
