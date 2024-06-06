@@ -60,6 +60,13 @@ RUN INSTALL_PKGS="\
     vim-enhanced \
     wget \
     wireshark-cli \
+    conntrack-tools \
+    perf \
+    iproute \
+    bcc \
+    bcc-tools \
+    python3-bcc \
+    bpftrace \
     xfsprogs \
     " && \
     yum -y install --setopt=tsflags=nodocs --setopt=skip_missing_names_on_install=False $INSTALL_PKGS && \
