@@ -617,6 +617,46 @@ Examples:
   network-tools ovn-db-run-locally ./leader_sbdb podman
 
 ```
+## `network-tools ovn-dbs-run-locally`
+
+```
+This script runs multiple OVN Kubernetes containers, restoring OVN databases from files in a
+specified directory. Containers will be running for each ovn db found.
+Ensure you invoke this script with the --clean option once you're finished, so containers are stopped.
+
+The script will wait up to 60 seconds for each OVN database to start. If any ovndb status is not active
+you will get a warning message.
+
+ATTENTION! For clustered dbs: dbs will be converted from cluster to standalone format
+as this is the only way to run dbs from gathered data. Db UUIDs will be preserved.
+
+ATTENTION! This is a local command, can't be used with must-gather.
+
+Usage: network-tools ovn-dbs-run-locally [-c,--clean] db_directory [{n,s,all}] [{docker,podman}]
+  -c,--clean: stop any running net-tool containers and exit
+  db_directory: directory containing db files from must-gather
+  {n,s,all}: specify which ovn db is wanted: northbound, southbound or both. Default is n
+  {docker,podman}: choose container engine to use. Default is docker
+
+Examples:
+  network-tools ovn-dbs-run-locally ./network_logs/dbs
+  network-tools ovn-dbs-run-locally ./network_logs/dbs all podman
+  network-tools ovn-dbs-run-locally -c
+
+Once containers are started, source the following generated file to interact with them:
+
+  source /tmp/net_tools_env
+  ntool_show  ; # use this to see all ovn db containers started
+  ntool_help  ; # use this to see all the available commands
+
+  ntool_0
+  ntool_cmd_a bash -c "ls cid*"
+  ntool_cmd_n ovn-nbctl show
+  ntool_cmd_s bash -c "hostname ; ovn-sbctl list chassis"
+
+You also can invoke "ntool_clean" to stop the containers.
+
+```
 ## `network-tools ovn-pprof-forwarding`
 
 ```
