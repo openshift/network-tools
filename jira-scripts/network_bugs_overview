@@ -960,7 +960,7 @@ def print_results(developers, stale_bugs, print_stale_bugs=False, quick=False):
 
 
 
-def add_extra_line(lines, new_data, new_data_name, quick=False):
+def prepare_extra_line(new_data, new_data_name, quick=False):
     if new_data:
         new_line = [
             "",
@@ -978,9 +978,7 @@ def add_extra_line(lines, new_data, new_data_name, quick=False):
         # last but one column is for recently assigned, keep last column is for total
         new_line.insert(-1, None)
 
-    lines.append(new_line)
-    return lines
-
+    return new_line
 
 def print_summary_table(developers, quick=False):
     # Remove external devs from the count
@@ -1033,27 +1031,42 @@ def print_summary_table(developers, quick=False):
             new_line.insert(-1, v["recently_assigned"])
         lines.append(new_line)
 
-
-    # add a "total" line
     lines.append(SEPARATING_LINE)
 
+    # add summary lines (total bugs for the team, for external team members, for sdn team bot)    
     num = sum(ordered_by_points[dev]["number_of_bugs"] for dev in ordered_by_points)
     num_new = sum(ordered_by_points[dev]["bugs_in_new"] for dev in ordered_by_points)
     num_assigned = sum(ordered_by_points[dev]["bugs_in_assigned"] for dev in ordered_by_points)
     num_post = sum(ordered_by_points[dev]["bugs_in_post"] for dev in ordered_by_points)
     num_backports = sum(ordered_by_points[dev]["backport_bugs"] for dev in ordered_by_points)
     num_scan = sum(ordered_by_points[dev]["scan_bugs"] for dev in ordered_by_points)
-    num_total = num + num_backports + num_scan
-    total_line = ["", "TOTAL", None, num, num_new, num_assigned, num_post, num_backports, num_scan, num_total]
+    num_team = num + num_backports + num_scan
+    team_line = ["", "team", None, num, num_new, num_assigned, num_post, num_backports, num_scan, num_team]
     if not quick:
         num_recently_assigned = sum(ordered_by_points[dev]["recently_assigned"] for dev in ordered_by_points)
-        total_line.insert(-1, num_recently_assigned)
+        team_line.insert(-1, num_recently_assigned)
 
+    external_line = prepare_extra_line(external_data, "external", quick=quick)
+    bot_line = prepare_extra_line(sdn_team_bot_data, "sdn-team-bot", quick=quick)
+
+    # add total line (team + external + bot)
+    total_line = ["", "TOTAL", None]
+    for i in range(3, len(team_line)):
+        if i < len(external_line) and i < len(bot_line):
+            try:
+                total_val = team_line[i] + external_line[i] + bot_line[i]
+            except:
+                # not an int, just add a blank
+                total_val = None
+                
+            total_line.append(total_val)
+
+    lines.append(team_line)
+    lines.append(external_line)
+    lines.append(bot_line)
+    lines.append(SEPARATING_LINE)    
     lines.append(total_line)
-
-    lines = add_extra_line(lines, external_data, "external", quick=quick)
-    lines = add_extra_line(lines, sdn_team_bot_data, "sdn-team-bot", quick=quick)
-
+    
     print(tabulate(lines, headers=headers))
 
     explanation_message = """
