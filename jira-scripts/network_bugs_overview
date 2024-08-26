@@ -27,6 +27,7 @@ EXTERNAL_JIRA_ASSIGNEE = "external" # placeholder for all assignees not in the t
 SDN_TEAM_BOT_ASSIGNEE = "sdn-team-bot"
 
 RH_DEVELOPERS = (
+    "rhn-support-arghosh",
     "jcaamano",
     "jluhrsen",
     "jtanenba",
@@ -42,6 +43,7 @@ RH_DEVELOPERS = (
 )
 
 GITHUB_TO_JIRA_USERS = {
+    "arghosh93": "rhn-support-arghosh",
     "jcaamano": "jcaamano",
     "jluhrsen": "jluhrsen",
     "JacobTanenbaum": "jtanenba",
