@@ -497,6 +497,12 @@ def retrieve_unassigned_jira_bugs():
     return bugs + upstream_issues
 
 
+def print_bug(issue_key):
+    clients = init_clients(jira_=True)
+    issue = clients[JIRA_KEY].issue(issue_key)
+    print(issue.__dict__)
+    return
+
 def retrieve_jira_bugs_for_given_dev(dev_name):
     clients = init_clients(jira_=True)
     query = init_jira_query_for_one_assignee(dev_name)
@@ -1031,7 +1037,7 @@ def print_summary_table(developers, quick=False):
 
     lines.append(SEPARATING_LINE)
 
-    # add summary lines (total bugs for the team, for external team members, for sdn team bot)    
+    # add summary lines (total bugs for the team, for external team members, for sdn team bot)
     num = sum(ordered_by_points[dev]["number_of_bugs"] for dev in ordered_by_points)
     num_new = sum(ordered_by_points[dev]["bugs_in_new"] for dev in ordered_by_points)
     num_assigned = sum(ordered_by_points[dev]["bugs_in_assigned"] for dev in ordered_by_points)
@@ -1056,15 +1062,15 @@ def print_summary_table(developers, quick=False):
             except:
                 # not an int, just add a blank
                 total_val = None
-                
+
             total_line.append(total_val)
 
     lines.append(team_line)
     lines.append(external_line)
     lines.append(bot_line)
-    lines.append(SEPARATING_LINE)    
+    lines.append(SEPARATING_LINE)
     lines.append(total_line)
-    
+
     print(tabulate(lines, headers=headers))
 
     explanation_message = """
@@ -1155,6 +1161,7 @@ def parse_input_args():
         ),
         action="store_true",
     )
+    parser.add_argument("--print-bug", "-p", type=str, help='Given a bug id (e.g. OCPBUGS-123), it will print all the bug internal details as seen from the jira client. Useful for debugging this script.')
 
     args = parser.parse_args()
 
@@ -1187,6 +1194,7 @@ def parse_input_args():
         "quick": bool(args.quick),
         "new_bugs": new_bugs,
         "process_github_issues": process_github_issues,
+        "print_bug": args.print_bug
     }
 
     return params
@@ -1194,6 +1202,10 @@ def parse_input_args():
 
 def main():
     params = parse_input_args()
+
+    if params.get("print_bug"):
+        print_bug(params["print_bug"])
+        return
 
     if params.get("process_github_issues"):
         process_github_issues()
