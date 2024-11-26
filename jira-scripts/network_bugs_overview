@@ -31,6 +31,7 @@ RH_DEVELOPERS = (
     "jcaamano",
     "jluhrsen",
     "jtanenba",
+    "rhn-support-misalunk",
     "mkennell",
     "npinaeva",
     "pdiak",
@@ -48,6 +49,7 @@ GITHUB_TO_JIRA_USERS = {
     "jluhrsen": "jluhrsen",
     "JacobTanenbaum": "jtanenba",
     "martinkennelly": "mkennell",
+    "miheer": "rhn-support-misalunk",
     "npinaeva": "npinaeva",
     "kyrtapz": "pdiak",
     "pperiyasamy": "pepalani",
@@ -119,6 +121,10 @@ TEAM_COMPONENTS = (
 )
 ASSIGN_WINDOW_DAYS = 21  # 3 weeks in a sprint
 
+def render_rh_developers(name):
+    if name.startswith("rhn-support-"):
+        return name[len("rhn-support-") :]
+    return name
 
 def extract_number_from_jira_id(jira_id):
     return int(re.search(r'^SDN-(\d+)$', jira_id).group(1))
@@ -1022,7 +1028,7 @@ def print_summary_table(developers, quick=False):
         dev_username, _ = get_username_and_usermail_from_assignee(dev_email)
         new_line = [
             rank + 1,
-            dev_username,
+            render_rh_developers(dev_username),
             v["points"],
             v["number_of_bugs"],
             v["bugs_in_new"],
