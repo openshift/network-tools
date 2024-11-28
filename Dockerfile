@@ -24,6 +24,7 @@ RUN INSTALL_PKGS="\
     numactl \
     perf \
     python3-bcc \
+    bpftrace \
     traceroute \
     wireshark-cli \
     " && \
