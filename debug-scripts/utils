@@ -105,7 +105,7 @@ get_netns_pid () {
 
   node_name="$(get_pod_node "$namespace" "$pod")"
   ns_pid=$(oc debug node/"$node_name" -- chroot /host bash -c \
-                 "runc state \$(crictl ps --pod \$(crictl pods --namespace $namespace --name $pod -q) -q) | jq .pid" || \
+                 "crun state \$(crictl ps --pod \$(crictl pods --namespace $namespace --name $pod -q) -q) | jq .pid" || \
                   { echo "ERROR: Can't get netns pid" 1>&2; exit 1; })
   echo "$ns_pid"
 }
