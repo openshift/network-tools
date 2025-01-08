@@ -111,7 +111,7 @@ run_command_inside_pod_network_namespace() {
 
     node_name="$(get_pod_node "$namespace" "$pod")"
     ans="$(oc debug node/"$node_name" -- chroot /host bash -c \
-        "nsenter -n -t \$(runc state \$(crictl ps --pod \$(crictl pods --namespace $namespace --name $pod -q) -q) | jq .pid) $command")"
+        "nsenter -n -t \$(crun state \$(crictl ps --pod \$(crictl pods --namespace $namespace --name $pod -q) -q) | jq .pid) $command")"
     echo "
 INFO: command output
 
