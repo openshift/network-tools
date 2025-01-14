@@ -36,6 +36,7 @@ RH_DEVELOPERS = (
     "npinaeva",
     "pdiak",
     "pepalani",
+    "pliurh",
     "rravaiol",
     "sseethar",
     "trozet",
@@ -53,6 +54,7 @@ GITHUB_TO_JIRA_USERS = {
     "npinaeva": "npinaeva",
     "kyrtapz": "pdiak",
     "pperiyasamy": "pepalani",
+    "pliurh": "pliurh",
     "ricky-rav": "rravaiol",
     "tssurya": "sseethar",
     "trozet": "trozet",
@@ -124,6 +126,8 @@ ASSIGN_WINDOW_DAYS = 21  # 3 weeks in a sprint
 def render_rh_developers(name):
     if name.startswith("rhn-support-"):
         return name[len("rhn-support-") :]
+    if name == "pliurh":
+        return "pliu"
     return name
 
 def extract_number_from_jira_id(jira_id):
