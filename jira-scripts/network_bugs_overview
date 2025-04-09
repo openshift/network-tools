@@ -488,9 +488,9 @@ def process_github_issues():
 
 def retrieve_unassigned_jira_bugs():
     clients = init_clients(jira_=True)
-
+    SDN_OCPBUGS_FILTER = 'project = OCPBUGS AND component in ("Networking / openshift-sdn", "Networking / ovn-kubernetes", "Networking / cloud-network-config-controller", "Networking / ingress-node-firewall", "Networking / cluster-network-operator", "Networking / network-tools")'
     query = (
-        '(filter in ("SDN BZ filter", "SDN OCPBUGS") OR project = RHOCPPRIO AND component in ("networking/sdn") '
+        f'(({SDN_OCPBUGS_FILTER}) OR project = RHOCPPRIO AND component in ("networking/sdn") '
         "OR project = CORENET AND issuetype = Bug) AND resolution = Unresolved AND ((project = OCPBUGSM OR project = "
         'OCPBUGS) AND assignee = "bbennett@redhat.com" OR project = RHOCPPRIO AND assignee in ('
         '"anbhat@redhat.com", "zshi@redhat.com") OR assignee is EMPTY) ORDER BY Rank DESC'
