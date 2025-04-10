@@ -20,7 +20,7 @@ class colors:
     BOLD = "\033[1m"
 
 
-JIRA_EPIC_FOR_GITHUB_ISSUES = "SDN-4175"
+JIRA_EPIC_FOR_GITHUB_ISSUES = "CORENET-5473"
 GITHUB_ISSUES_LABEL = "kind/ci-flake"
 DEFAULT_JIRA_ASSIGNEE = "bbennett"
 EXTERNAL_JIRA_ASSIGNEE = "external" # placeholder for all assignees not in the team list
@@ -131,7 +131,7 @@ def render_rh_developers(name):
     return name
 
 def extract_number_from_jira_id(jira_id):
-    return int(re.search(r'^SDN-(\d+)$', jira_id).group(1))
+    return int(re.search(r'^CORENET-(\d+)$', jira_id).group(1))
 
 
 def get_jira_issue_url(jira_issue):
@@ -192,7 +192,7 @@ def retrieve_github_issues():
 
 
 def get_query_for_jira_stories_tracking_github_issues():
-    return f'project = SDN AND "Epic Link" = {JIRA_EPIC_FOR_GITHUB_ISSUES} AND Summary ~ "upstream-*"'
+    return f'project = CORENET AND "Epic Link" = {JIRA_EPIC_FOR_GITHUB_ISSUES} AND Summary ~ "upstream-*"'
 
 
 def get_query_for_unassigned_jira_stories_tracking_github_issues():
@@ -201,7 +201,7 @@ def get_query_for_unassigned_jira_stories_tracking_github_issues():
     )
     return (
         get_query_for_jira_stories_tracking_github_issues()
-        + f' AND filter in (Unresolved) AND (assignee = "{default_assignee_mail}" OR assignee is EMPTY)'
+        + f' AND resolution = Unresolved AND (assignee = "{default_assignee_mail}" OR assignee is EMPTY)'
     )
 
 
@@ -211,7 +211,7 @@ def get_query_for_unresolved_jira_stories_tracking_github_issues():
     )
     return (
         get_query_for_jira_stories_tracking_github_issues()
-        + f' AND filter in (Unresolved) AND assignee != "{default_assignee_mail}" AND assignee is not EMPTY'
+        + f' AND resolution = Unresolved AND assignee != "{default_assignee_mail}" AND assignee is not EMPTY'
     )
 
 
@@ -373,7 +373,7 @@ def align_jira_with_open_github_issues(github_issues):
             # Create a new Jira story
             try:
                 new_jira = jira_client.create_issue(
-                    project={"key": "SDN"},
+                    project={"key": "CORENET"},
                     summary=new_jira_summary[:255],  # jira summary must be < 255 characters
                     description=new_jira_description,
                     issuetype={"name": "Story"},
@@ -492,10 +492,10 @@ def process_github_issues():
 
 def retrieve_unassigned_jira_bugs():
     clients = init_clients(jira_=True)
-
+    SDN_OCPBUGS_FILTER = 'project = OCPBUGS AND component in ("Networking / openshift-sdn", "Networking / ovn-kubernetes", "Networking / cloud-network-config-controller", "Networking / ingress-node-firewall", "Networking / cluster-network-operator", "Networking / network-tools")'
     query = (
-        '(filter in ("SDN BZ filter", "SDN OCPBUGS") OR project = RHOCPPRIO AND component in ("networking/sdn") '
-        "OR project = SDN AND issuetype = Bug) AND filter in (Unresolved) AND ((project = OCPBUGSM OR project = "
+        f'(({SDN_OCPBUGS_FILTER}) OR project = RHOCPPRIO AND component in ("networking/sdn") '
+        "OR project = CORENET AND issuetype = Bug) AND resolution = Unresolved AND ((project = OCPBUGSM OR project = "
         'OCPBUGS) AND assignee = "bbennett@redhat.com" OR project = RHOCPPRIO AND assignee in ('
         '"anbhat@redhat.com", "zshi@redhat.com") OR assignee is EMPTY) ORDER BY Rank DESC'
     )
