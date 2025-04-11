@@ -20,7 +20,7 @@ class colors:
     BOLD = "\033[1m"
 
 
-JIRA_EPIC_FOR_GITHUB_ISSUES = "CORENET-5473"
+JIRA_EPIC_FOR_GITHUB_ISSUES = "CORENET-3945"
 GITHUB_ISSUES_LABEL = "kind/ci-flake"
 DEFAULT_JIRA_ASSIGNEE = "bbennett"
 EXTERNAL_JIRA_ASSIGNEE = "external" # placeholder for all assignees not in the team list
