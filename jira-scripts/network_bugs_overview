@@ -20,7 +20,7 @@ class colors:
     BOLD = "\033[1m"
 
 
-JIRA_EPIC_FOR_GITHUB_ISSUES = "CORENET-5473"
+JIRA_EPIC_FOR_GITHUB_ISSUES = "CORENET-3945"
 GITHUB_ISSUES_LABEL = "kind/ci-flake"
 DEFAULT_JIRA_ASSIGNEE = "bbennett"
 EXTERNAL_JIRA_ASSIGNEE = "external" # placeholder for all assignees not in the team list
@@ -218,21 +218,15 @@ def get_query_for_unresolved_jira_stories_tracking_github_issues():
 def get_jira_assignee_from_github_user(github_user):
     # When we read or create a story, our jira server is not really consistent in the
     # assignee format it accepts:
-    # - if a user has an alias, the assignee should be the alias user name (not the email address)
+    # - if a user has an alias, the assignee should be the user name (not the email address)
     # - if a user has no alias, the assignee should be the email address
-    jira_story_assignee = (
-        GITHUB_TO_JIRA_USERS.get(github_user) or DEFAULT_JIRA_ASSIGNEE
-    )
-    _, jira_story_assignee_mail = get_username_and_usermail_from_assignee(
-        jira_story_assignee
-    )
-    jira_story_assignee_user_alias, _ = get_alias_and_email_alias_from_username(
-        jira_story_assignee
-    )
-    assignee_value = jira_story_assignee_mail
-    if jira_story_assignee_user_alias:
-        assignee_value = jira_story_assignee
-    return assignee_value
+    jira_user = GITHUB_TO_JIRA_USERS.get(github_user) or DEFAULT_JIRA_ASSIGNEE
+    _, jira_mail = get_username_and_usermail_from_assignee(jira_user)
+    jira_alias, _ = get_alias_and_email_alias_from_username(jira_user)
+    jira_assignee = jira_mail
+    if jira_alias:
+        jira_assignee = jira_user
+    return jira_assignee, jira_user
 
 
 def open_or_close_jira_story(jira_client, jira_id, action_open=True, comment=""):
@@ -299,13 +293,14 @@ def align_jira_assignee_with_github(jira_client, github_id, github_dict, jira_id
     github_assignee = github_dict["assignee"]
     jira_assignee = jira_dict["assignee"]
 
-    expected_jira_assignee = get_jira_assignee_from_github_user(github_assignee)
-    if jira_assignee == expected_jira_assignee:
+    expected_jira_assignee, jira_user = get_jira_assignee_from_github_user(github_assignee)
+
+    if jira_assignee in (expected_jira_assignee, jira_user):
         return
 
     print(
-        f"- Github issue {github_dict['url']} is assigned to {github_assignee}"
-        f" but its jira story {jira_id} is assigned to {jira_assignee} "
+        f"- Github issue {github_dict['url']} is assigned to github user {github_assignee}"
+        f" but its jira story {jira_id} is assigned to jira user {jira_assignee} "
         f"(expected: {expected_jira_assignee}). "
     )
 
@@ -369,7 +364,7 @@ def align_jira_with_open_github_issues(github_issues):
             new_jira_description = (
                 f"Tracking ovn-kubernetes upstream issue: {github_issue_url}"
             )
-            new_jira_assignee = get_jira_assignee_from_github_user(github_issue_assignee)
+            new_jira_assignee, _ = get_jira_assignee_from_github_user(github_issue_assignee)
             # Create a new Jira story
             try:
                 new_jira = jira_client.create_issue(
