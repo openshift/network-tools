@@ -28,12 +28,12 @@ SDN_TEAM_BOT_ASSIGNEE = "sdn-team-bot"
 
 RH_DEVELOPERS = (
     "rhn-support-arghosh",
+    "rh-ee-arsen",
     "jcaamano",
     "jluhrsen",
-    "jtanenba",
+    # "jtanenba",
     "rhn-support-misalunk",
     "mkennell",
-    "npinaeva",
     "pdiak",
     "pepalani",
     "pliurh",
@@ -46,12 +46,12 @@ RH_DEVELOPERS = (
 
 GITHUB_TO_JIRA_USERS = {
     "arghosh93": "rhn-support-arghosh",
+    "arkadeepsen": "rh-ee-arsen",
     "jcaamano": "jcaamano",
     "jluhrsen": "jluhrsen",
-    "JacobTanenbaum": "jtanenba",
+    # "JacobTanenbaum": "jtanenba",
     "martinkennelly": "mkennell",
     "miheer": "rhn-support-misalunk",
-    "npinaeva": "npinaeva",
     "kyrtapz": "pdiak",
     "pperiyasamy": "pepalani",
     "pliurh": "pliurh",
@@ -126,6 +126,8 @@ ASSIGN_WINDOW_DAYS = 21  # 3 weeks in a sprint
 def render_rh_developers(name):
     if name.startswith("rhn-support-"):
         return name[len("rhn-support-") :]
+    if name.startswith("rh-ee-"):
+        return name[len("rh-ee-") :]
     if name == "pliurh":
         return "pliu"
     return name
