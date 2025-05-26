@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-source ./utils
+source ../utils
 
 description() {
     echo "Run ovn-kubernetes container with ovn db restored from a given file"
