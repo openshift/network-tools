@@ -1,7 +1,46 @@
-self_dir :=$(dir $(lastword $(MAKEFILE_LIST)))
+include $(addprefix $(dir $(lastword $(MAKEFILE_LIST))), \
+	../../lib/golang.mk \
+	../../lib/tmp.mk \
+)
 
-CONTROLLER_GEN_VERSION ?=v0.2.5
-CONTROLLER_GEN ?=$(PERMANENT_TMP_GOPATH)/bin/controller-gen
+##############
+# DEPRECATED #
+##############
+# This utility is hard to maintain due to the need to continuously build and release binaries for
+# multiple platforms and versions. Instead it is recommended that you:
+# - Vendor the sigs.k8s.io/controller-tools repository.
+# - Write a local rule to (lazily) build the controller-gen binary from the vendored repo.
+# For example:
+#
+# CONTROLLER_GEN_SRC := $(shell realpath vendor/sigs.k8s.io/controller-tools/cmd/controller-gen)
+# CONTROLLER_GEN := $(shell go list -f '{{.Target}}' $(CONTROLLER_GEN_SRC))
+# $(CONTROLLER_GEN): $(CONTROLLER_GEN_SRC)
+# 	go install $(CONTROLLER_GEN_SRC)
+#
+# This allows you to upgrade versions simply by revendoring controller-tools:
+# - Bump the semver in your go.mod
+# - go mod tidy
+# - go mod vendor
+##############
+
+# NOTE: The release binary specified here needs to be built properly so that
+# `--version` works correctly. Just using `go build` will result in it
+# reporting `(devel)`. To build for a given platform:
+# 	GOOS=xxx GOARCH=yyy go install sigs.k8s.io/controller-tools/cmd/controller-gen@$version
+# e.g.
+# 	GOOS=darwin GOARCH=amd64 go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.9.2
+#
+# If GOOS and GOARCH match your current go env, this will install the binary at
+# 	$(go env GOPATH)/bin/controller-gen
+# Otherwise (when cross-compiling) it will install the binary at
+# 	$(go env GOPATH)/bin/${GOOS}_${GOARCH}/conroller-gen
+# e.g.
+# 	/home/efried/.gvm/pkgsets/go1.16/global/bin/darwin_amd64/controller-gen
+CONTROLLER_GEN_VERSION ?=v0.9.2
+CONTROLLER_GEN ?=$(PERMANENT_TMP_GOPATH)/bin/controller-gen-$(CONTROLLER_GEN_VERSION)
+ifneq "" "$(wildcard $(CONTROLLER_GEN))"
+_controller_gen_installed_version = $(shell $(CONTROLLER_GEN) --version | awk '{print $$2}')
+endif
 controller_gen_dir :=$(dir $(CONTROLLER_GEN))
 
 ensure-controller-gen:
@@ -12,20 +51,14 @@ ifeq "" "$(wildcard $(CONTROLLER_GEN))"
 	chmod +x '$(CONTROLLER_GEN)';
 else
 	$(info Using existing controller-gen from "$(CONTROLLER_GEN)")
+	@[[ "$(_controller_gen_installed_version)" == $(CONTROLLER_GEN_VERSION) ]] || \
+	echo "Warning: Installed controller-gen version $(_controller_gen_installed_version) does not match expected version $(CONTROLLER_GEN_VERSION)."
 endif
 .PHONY: ensure-controller-gen
 
 clean-controller-gen:
-	$(RM) '$(CONTROLLER_GEN)'
+	$(RM) $(controller_gen_dir)controller-gen*
 	if [ -d '$(controller_gen_dir)' ]; then rmdir --ignore-fail-on-non-empty -p '$(controller_gen_dir)'; fi
 .PHONY: clean-controller-gen
 
 clean: clean-controller-gen
-
-# We need to be careful to expand all the paths before any include is done
-# or self_dir could be modified for the next include by the included file.
-# Also doing this at the end of the file allows us to use self_dir before it could be modified.
-include $(addprefix $(self_dir), \
-	../../lib/golang.mk \
-	../../lib/tmp.mk \
-)
