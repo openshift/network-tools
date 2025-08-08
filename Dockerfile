@@ -20,7 +20,6 @@ RUN INSTALL_PKGS="\
     iproute \
     nginx \
     numactl \
-    perf \
     traceroute \
     wireshark-cli \
     " && \
