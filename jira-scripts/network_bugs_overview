@@ -39,7 +39,6 @@ RH_DEVELOPERS = (
     "pliurh",
     "rravaiol",
     "sseethar",
-    "trozet",
     EXTERNAL_JIRA_ASSIGNEE,  # placeholder for bugs in our components owned by external memebers
     SDN_TEAM_BOT_ASSIGNEE, # special user acting as our team backlog
 )
@@ -57,7 +56,6 @@ GITHUB_TO_JIRA_USERS = {
     "pliurh": "pliurh",
     "ricky-rav": "rravaiol",
     "tssurya": "sseethar",
-    "trozet": "trozet",
 }
 
 ALIASES_TO_USERNAMES = {
