@@ -1,12 +1,12 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.23-openshift-4.19 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.24-openshift-4.20 AS builder
 WORKDIR /go/src/github.com/openshift/network-tools
 COPY . .
 
 # needed for ovnkube-trace
-FROM registry.ci.openshift.org/ocp/4.19:ovn-kubernetes AS ovnkube-trace
+FROM registry.ci.openshift.org/ocp/4.20:ovn-kubernetes AS ovnkube-trace
 
 # tools (openshift-tools) is based off cli
-FROM registry.ci.openshift.org/ocp/4.19:tools
+FROM registry.ci.openshift.org/ocp/4.20:tools
 COPY --from=builder /go/src/github.com/openshift/network-tools/debug-scripts/ /opt/bin/
 COPY --from=ovnkube-trace /usr/bin/ovnkube-trace /usr/bin/
 
