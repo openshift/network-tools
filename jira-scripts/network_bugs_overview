@@ -1169,10 +1169,14 @@ def parse_input_args():
         action="store_true",
     )
     parser.add_argument("--print-bug", "-p", type=str, help='Given a bug id (e.g. OCPBUGS-123), it will print all the bug internal details as seen from the jira client. Useful for debugging this script.')
-
     parser.add_argument(
         "--recent-bot-bug-comments",
         help="List bug issues assigned to 'sdn-team-bot' with comments for the last 4 days",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--old-bot-bugs",
+        help="List bug issues assigned to 'sdn-team bot' that are older than 4 months",
         action="store_true",
     )
 
@@ -1208,11 +1212,65 @@ def parse_input_args():
         "new_bugs": new_bugs,
         "process_github_issues": process_github_issues,
         "print_bug": args.print_bug,
-        "recent_bot_bug_comments": bool(args.recent_bot_bug_comments)
+        "recent_bot_bug_comments": bool(args.recent_bot_bug_comments),
+        "old_bot_bugs": bool(args.old_bot_bugs)
     }
 
     return params
 
+def list_old_bot_bugs():
+    """List bug issues assigned to 'sdn-team-bot' that are older than 4 months"""
+    from datetime import datetime, timedelta
+    jira_client = init_jira()
+    # Query for bug issues assigned to sdn-team bot
+    query = f'assignee = "{SDN_TEAM_BOT_ASSIGNEE}@redhat.com" AND type = Bug AND resolution = Unresolved'
+    bugs = run_jira_query(jira_client, query)
+    if not bugs:
+        print("No bug issues found assigned to 'sdn-team-bot'")
+        return
+    print(f"Checking {len(bugs)} bug issues assigned to 'sdn-team-bot' for bugs older than 4 months...")
+    print("=" * 80)
+    four_months_ago = datetime.now() - timedelta(days=120)  # ~4 months
+    found_old = False
+    for bug in bugs:
+        try:
+            # Check creation date
+            created_time = parse(bug.fields.created).replace(tzinfo=None)
+            if created_time < four_months_ago:
+                found_old = True
+                bug_url = get_jira_issue_url(bug.key)
+                priority = bug.fields.priority.name if bug.fields.priority else "None"
+                # Try to get severity from common custom fields
+                severity = getattr(bug.fields, 'customfield_12316142', None)
+                if severity and hasattr(severity, 'value'):
+                    severity = severity.value
+                elif severity:
+                    severity = str(severity)
+                else:
+                    severity = "Unknown"
+                # Get the last comment
+                last_comment = "No comments"
+                try:
+                    comments = jira_client.comments(bug)
+                    if comments:
+                        last_comment_obj = comments[-1]
+                        comment_date = parse(last_comment_obj.created).strftime("%Y-%m-%d %H:%M")
+                        comment_author = last_comment_obj.author.displayName
+                        comment_body = last_comment_obj.body[:200] + "..." if len(last_comment_obj.body) > 200 else last_comment_obj.body
+                        last_comment = f"[{comment_date}] {comment_author}: {comment_body}"
+                except Exception:
+                    last_comment = "Could not retrieve comments"
+                days_old = (datetime.now() - created_time).days
+                print(f"\n🐛 {bug.fields.summary}")
+                print(f"   Link: {bug_url}")
+                print(f"   Priority: {priority} | Severity: {severity}")
+                print(f"   Age: {days_old} days old (created: {created_time.strftime('%Y-%m-%d')})")
+                print(f"   Last comment: {last_comment}")
+        except Exception as e:
+            print(f"Error processing bug {bug.key}: {e}")
+            continue
+    if not found_old:
+        print("No bug issues older than 4 months found.")
 
 def list_recent_bug_comments():
     """List bug issues assigned to 'sdn-team-bot' with comments for the last 4 days.."""
@@ -1270,6 +1328,10 @@ def main():
         list_recent_bug_comments()
         return
 
+    if params.get("old_bot_bugs"):
+        list_old_bot_bugs()
+        return
+
     if params.get("process_github_issues"):
         process_github_issues()
 
@@ -1295,7 +1357,6 @@ def main():
 
     if params.get("new_bugs"):
         print_unassigned_bugs()
-
 
 if __name__ == "__main__":
     main()
