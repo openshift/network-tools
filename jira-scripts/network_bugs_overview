@@ -1170,6 +1170,12 @@ def parse_input_args():
     )
     parser.add_argument("--print-bug", "-p", type=str, help='Given a bug id (e.g. OCPBUGS-123), it will print all the bug internal details as seen from the jira client. Useful for debugging this script.')
 
+    parser.add_argument(
+        "--recent-bot-bug-comments",
+        help="List bug issues assigned to 'sdn-team-bot' with comments for the last 4 days",
+        action="store_true",
+    )
+
     args = parser.parse_args()
 
     # By default jira bugs are queried and parsed. Jira escalations are not.
@@ -1201,17 +1207,67 @@ def parse_input_args():
         "quick": bool(args.quick),
         "new_bugs": new_bugs,
         "process_github_issues": process_github_issues,
-        "print_bug": args.print_bug
+        "print_bug": args.print_bug,
+        "recent_bot_bug_comments": bool(args.recent_bot_bug_comments)
     }
 
     return params
 
+
+def list_recent_bug_comments():
+    """List bug issues assigned to 'sdn-team-bot' with comments for the last 4 days.."""
+    from datetime import datetime, timedelta
+    jira_client = init_jira()
+    # Query for bug issues assigned to sdn-team-bot
+    query = f'assignee = "{SDN_TEAM_BOT_ASSIGNEE}@redhat.com" AND type = Bug AND resolution = Unresolved'
+    bugs = run_jira_query(jira_client, query)
+    if not bugs:
+        print("No bug issues found assigned to 'sdn-team-bot'")
+        return
+    print(f"Checking {len(bugs)} bug issues assigned to 'sdn-team-bot' for recent comments...")
+    print("=" * 70)
+    forty_eight_hours_ago = datetime.now() - timedelta(hours=96)
+    found_recent = False
+    for bug in bugs:
+        try:
+            comments = jira_client.comments(bug)
+            # Check if there are comments in the last 48 hours
+            recent_comments = []
+            for comment in comments:
+                comment_time = parse(comment.created).replace(tzinfo=None)
+                if comment_time > forty_eight_hours_ago:
+                    recent_comments.append(comment)
+            if recent_comments:
+                found_recent = True
+                bug_url = get_jira_issue_url(bug.key)
+                priority = bug.fields.priority.name if bug.fields.priority else "None"
+                # Try to get severity from common custom fields
+                severity = getattr(bug.fields, 'customfield_12316142', None)
+                if severity and hasattr(severity, 'value'):
+                    severity = severity.value
+                elif severity:
+                    severity = str(severity)
+                else:
+                    severity = "Unknown"
+                print(f"\n🐛 {bug.fields.summary}")
+                print(f"   Link: {bug_url}")
+                print(f"   Priority: {priority} | Severity: {severity}")
+                print(f"   Recent comments found: {len(recent_comments)} for the last 4 days")
+        except Exception as e:
+            print(f"Error processing bug {bug.key}: {e}")
+            continue
+    if not found_recent:
+        print("No bug issues with comments for the last 4 days found.")
 
 def main():
     params = parse_input_args()
 
     if params.get("print_bug"):
         print_bug(params["print_bug"])
+        return
+
+    if params.get("recent_bot_bug_comments"):
+        list_recent_bug_comments()
         return
 
     if params.get("process_github_issues"):
