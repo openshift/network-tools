@@ -29,6 +29,7 @@ SDN_TEAM_BOT_ASSIGNEE = "sdn-team-bot"
 RH_DEVELOPERS = (
     "rhn-support-arghosh",
     "rh-ee-arsen",
+    "rh-ee-mapower",
     "jcaamano",
     "jluhrsen",
     # "jtanenba",
@@ -46,6 +47,7 @@ RH_DEVELOPERS = (
 GITHUB_TO_JIRA_USERS = {
     "arghosh93": "rhn-support-arghosh",
     "arkadeepsen": "rh-ee-arsen",
+    "marty-power": "rh-ee-mapower",
     "jcaamano": "jcaamano",
     "jluhrsen": "jluhrsen",
     # "JacobTanenbaum": "jtanenba",
