@@ -26,6 +26,7 @@ DEFAULT_JIRA_ASSIGNEE = "bbennett"
 EXTERNAL_JIRA_ASSIGNEE = "external" # placeholder for all assignees not in the team list
 SDN_TEAM_BOT_ASSIGNEE = "sdn-team-bot"
 
+# WARNING 2025: the jira ID for new hires seems to be always prefixed with "rh-ee-" now
 RH_DEVELOPERS = (
     "rhn-support-arghosh",
     "rh-ee-arsen",
@@ -33,8 +34,8 @@ RH_DEVELOPERS = (
     "jcaamano",
     "jluhrsen",
     # "jtanenba",
-    "ljouin",
-    "mdallagl",
+    "rh-ee-ljouin",
+    "rh-ee-mdallagl",
     "rhn-support-misalunk",
     "mkennell",
     "pdiak",
@@ -53,9 +54,9 @@ GITHUB_TO_JIRA_USERS = {
     "jcaamano": "jcaamano",
     "jluhrsen": "jluhrsen",
     # "JacobTanenbaum": "jtanenba",
-    "LionelJouin":"ljouin",
+    "LionelJouin":"rh-ee-ljouin",
     "martinkennelly": "mkennell",
-    "mattedallo": "mdallagl",
+    "mattedallo": "rh-ee-mdallagl",
     "miheer": "rhn-support-misalunk",
     "kyrtapz": "pdiak",
     "pperiyasamy": "pepalani",
