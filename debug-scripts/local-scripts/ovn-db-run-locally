@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-source ./utils
+source ../utils
 
 description() {
     echo "Run ovn-kubernetes container with ovn db restored from a given file"
@@ -56,7 +56,7 @@ main() {
       exit 1
   fi
 
-  CONTAINER=$($CONTAINER_ENGINE run -t -d --entrypoint /bin/bash quay.io/openshift/origin-ovn-kubernetes:latest)
+  CONTAINER=$($CONTAINER_ENGINE run --arch=amd64 -t -d --entrypoint /bin/bash quay.io/openshift/origin-ovn-kubernetes:latest)
   # cleanup if container is successfully created
   trap clean_up EXIT
 
