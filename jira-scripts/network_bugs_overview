@@ -28,6 +28,7 @@ SDN_TEAM_BOT_ASSIGNEE = "sdn-team-bot"
 
 # WARNING 2025: the jira ID for new hires seems to be always prefixed with "rh-ee-" now
 RH_DEVELOPERS = (
+    "asuryana",
     "rhn-support-arghosh",
     "rh-ee-arsen",
     "rh-ee-mapower",
@@ -43,6 +44,8 @@ RH_DEVELOPERS = (
     "pliurh",
     "rravaiol",
     "sseethar",
+    "tpanteli",
+    "yboaron",
     EXTERNAL_JIRA_ASSIGNEE,  # placeholder for bugs in our components owned by external memebers
     SDN_TEAM_BOT_ASSIGNEE, # special user acting as our team backlog
 )
@@ -50,6 +53,7 @@ RH_DEVELOPERS = (
 GITHUB_TO_JIRA_USERS = {
     "arghosh93": "rhn-support-arghosh",
     "arkadeepsen": "rh-ee-arsen",
+    "aswinsuryan": "asuryana",
     "marty-power": "rh-ee-mapower",
     "jcaamano": "jcaamano",
     "jluhrsen": "jluhrsen",
@@ -62,7 +66,9 @@ GITHUB_TO_JIRA_USERS = {
     "pperiyasamy": "pepalani",
     "pliurh": "pliurh",
     "ricky-rav": "rravaiol",
+    "tpantelis": "tpanteli",
     "tssurya": "sseethar",
+    "yboaron": "yboaron",
 }
 
 ALIASES_TO_USERNAMES = {
