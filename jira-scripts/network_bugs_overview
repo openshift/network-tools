@@ -1192,6 +1192,21 @@ def parse_input_args():
         help="List bug issues assigned to 'sdn-team bot' that are older than 4 months",
         action="store_true",
     )
+    parser.add_argument(
+        "--query",
+        type=str,
+        help="Execute a custom JQL query and print the bug IDs and summaries",
+    )
+    parser.add_argument(
+        "--label-bug",
+        type=str,
+        help="Bug ID to apply a label to (e.g., OCPBUGS-123). Use with --label",
+    )
+    parser.add_argument(
+        "--label",
+        type=str,
+        help="Label to apply to the bug specified with --label-bug",
+    )
 
     args = parser.parse_args()
 
@@ -1226,10 +1241,106 @@ def parse_input_args():
         "process_github_issues": process_github_issues,
         "print_bug": args.print_bug,
         "recent_bot_bug_comments": bool(args.recent_bot_bug_comments),
-        "old_bot_bugs": bool(args.old_bot_bugs)
+        "old_bot_bugs": bool(args.old_bot_bugs),
+        "query": args.query,
+        "label_bug": args.label_bug,
+        "label": args.label,
     }
 
     return params
+
+def run_custom_query(query_str):
+    """Execute a custom JQL query and print detailed bug information."""
+    jira_client = init_jira()
+    print(f"Running JQL query: {query_str}")
+    print("=" * 80)
+    bugs = run_jira_query(jira_client, query_str)
+
+    if not bugs:
+        print("No bugs found matching the query.")
+        return
+
+    print(f"\nFound {len(bugs)} bugs:\n")
+    for bug in bugs:
+        bug_id = bug.key
+        bug_url = get_jira_issue_url(bug_id)
+        summary = bug.get_field("summary")
+        description = bug.get_field("description") or ""
+        labels = bug.fields.labels or []
+        components = [c.name for c in bug.get_field("components")] if bug.get_field("components") else []
+
+        # Check for issue links (for backport detection)
+        # In Jira, a bug is a backport if it has an outward "Depend" link
+        # (meaning it "depends on" another bug - the original bug being backported)
+        issue_links = []
+        try:
+            if hasattr(bug.fields, 'issuelinks') and bug.fields.issuelinks:
+                for link in bug.fields.issuelinks:
+                    link_type = link.type.name if hasattr(link, 'type') else "Unknown"
+                    if hasattr(link, 'outwardIssue'):
+                        issue_links.append(f"{link_type} -> {link.outwardIssue.key}")
+                    elif hasattr(link, 'inwardIssue'):
+                        issue_links.append(f"{link.inwardIssue.key} -> {link_type}")
+        except:
+            pass
+
+        # Get comments
+        comments = []
+        try:
+            comment_objs = jira_client.comments(bug)
+            for comment in comment_objs[:5]:  # Limit to first 5 comments
+                author = comment.author.displayName if hasattr(comment.author, 'displayName') else "Unknown"
+                body = comment.body[:200] + "..." if len(comment.body) > 200 else comment.body
+                comments.append(f"{author}: {body}")
+        except:
+            pass
+
+        print(f"\n{'=' * 80}")
+        print(f"Bug ID: {bug_id}")
+        print(f"URL: {bug_url}")
+        print(f"Summary: {summary}")
+        print(f"Components: {', '.join(components)}")
+        print(f"Labels: {', '.join(labels) if labels else 'None'}")
+        print(f"Issue Links: {', '.join(issue_links) if issue_links else 'None'}")
+        print(f"\nDescription:\n{description[:500]}{'...' if len(description) > 500 else ''}")
+        if comments:
+            print(f"\nComments ({len(comments)} shown):")
+            for i, comment in enumerate(comments, 1):
+                print(f"  {i}. {comment}")
+        print(f"{'=' * 80}")
+
+
+def apply_label_to_bug(bug_id, label):
+    """Apply a label to a specific bug."""
+    if not bug_id or not label:
+        print("Error: Both --label-bug and --label are required")
+        return
+
+    jira_client = init_jira()
+
+    try:
+        # Get the current bug to check if it exists
+        bug = jira_client.issue(bug_id)
+        current_labels = bug.fields.labels or []
+
+        # Check if label already exists
+        if label in current_labels:
+            print(f"Label '{label}' already exists on {bug_id}")
+            return
+
+        # Add the new label
+        new_labels = current_labels + [label]
+        bug.update(fields={"labels": new_labels})
+
+        bug_url = get_jira_issue_url(bug_id)
+        print(f"✓ Successfully applied label '{label}' to {bug_id}")
+        print(f"  URL: {bug_url}")
+        print(f"  Summary: {bug.fields.summary}")
+        print(f"  All labels: {', '.join(new_labels)}")
+
+    except Exception as ex:
+        print(f"Error applying label to {bug_id}: {ex}")
+
 
 def list_old_bot_bugs():
     """List bug issues assigned to 'sdn-team-bot' that are older than 4 months"""
@@ -1335,6 +1446,14 @@ def main():
 
     if params.get("print_bug"):
         print_bug(params["print_bug"])
+        return
+
+    if params.get("query"):
+        run_custom_query(params["query"])
+        return
+
+    if params.get("label_bug") or params.get("label"):
+        apply_label_to_bug(params.get("label_bug"), params.get("label"))
         return
 
     if params.get("recent_bot_bug_comments"):
