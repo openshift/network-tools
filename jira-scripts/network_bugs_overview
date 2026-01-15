@@ -5,6 +5,8 @@ from datetime import date, datetime, timedelta
 from dateutil.parser import parse
 import re
 import requests
+import shutil
+import subprocess
 import sys
 from tabulate import tabulate, SEPARATING_LINE
 import time
@@ -1192,6 +1194,23 @@ def parse_input_args():
         help="List bug issues assigned to 'sdn-team bot' that are older than 4 months",
         action="store_true",
     )
+    parser.add_argument(
+        "--query",
+        type=str,
+        help="Execute a custom JQL query and print the bug IDs and summaries",
+    )
+    parser.add_argument(
+        "--apply-label",
+        nargs=2,
+        metavar=("BUG_ID", "LABEL"),
+        help="Apply a label to a bug (e.g., --apply-label OCPBUGS-123 SDN:SomeLabel)",
+    )
+    parser.add_argument(
+        "-l",
+        "--label-bugs-with-claude",
+        help="Run Claude Code to automatically label bugs using AI",
+        action="store_true",
+    )
 
     args = parser.parse_args()
 
@@ -1199,12 +1218,14 @@ def parse_input_args():
     # However, as soon as issue types are explicitly specified as input parameters,
     # only those that are specified are queried.
     jira_bugs = jira_escalations = process_github_issues = new_bugs = False
+    label_bugs_with_claude = bool(args.label_bugs_with_claude)
     if (
         args.jira_bugs
         or args.jira_escalations
         or args.process_github_issues
         or args.new_bugs
         or args.quick
+        or args.label_bugs_with_claude
     ):
         jira_bugs = bool(args.jira_bugs) or bool(args.quick)
         jira_escalations = bool(args.jira_escalations)
@@ -1216,6 +1237,8 @@ def parse_input_args():
         jira_escalations = False
         new_bugs = True
         process_github_issues = True
+        # Also run AI-powered bug labeling by default
+        label_bugs_with_claude = True
     params = {
         "jira_bugs": jira_bugs,
         "jira_escalations": jira_escalations,
@@ -1226,10 +1249,102 @@ def parse_input_args():
         "process_github_issues": process_github_issues,
         "print_bug": args.print_bug,
         "recent_bot_bug_comments": bool(args.recent_bot_bug_comments),
-        "old_bot_bugs": bool(args.old_bot_bugs)
+        "old_bot_bugs": bool(args.old_bot_bugs),
+        "query": args.query,
+        "apply_label": args.apply_label,
+        "label_bugs_with_claude": label_bugs_with_claude,
     }
 
     return params
+
+def run_custom_query(query_str):
+    """Execute a custom JQL query and print detailed bug information."""
+    jira_client = init_jira()
+    print(f"Running JQL query: {query_str}")
+    print("=" * 80)
+    bugs = run_jira_query(jira_client, query_str)
+
+    if not bugs:
+        print("No bugs found matching the query.")
+        return
+
+    print(f"\nFound {len(bugs)} bugs:\n")
+    for bug in bugs:
+        bug_id = bug.key
+        bug_url = get_jira_issue_url(bug_id)
+        summary = bug.get_field("summary")
+        description = bug.get_field("description") or ""
+        labels = bug.fields.labels or []
+        components = [c.name for c in bug.get_field("components")] if bug.get_field("components") else []
+
+        # Check for issue links (for backport detection)
+        # In Jira, a bug is a backport if it has an outward "Depend" link
+        # (meaning it "depends on" another bug - the original bug being backported)
+        issue_links = []
+        try:
+            if hasattr(bug.fields, 'issuelinks') and bug.fields.issuelinks:
+                for link in bug.fields.issuelinks:
+                    link_type = link.type.name if hasattr(link, 'type') else "Unknown"
+                    if hasattr(link, 'outwardIssue'):
+                        issue_links.append(f"{link_type} -> {link.outwardIssue.key}")
+                    elif hasattr(link, 'inwardIssue'):
+                        issue_links.append(f"{link.inwardIssue.key} -> {link_type}")
+        except:
+            pass
+
+        # Get comments
+        comments = []
+        try:
+            comment_objs = jira_client.comments(bug)
+            for comment in comment_objs[:5]:  # Limit to first 5 comments
+                author = comment.author.displayName if hasattr(comment.author, 'displayName') else "Unknown"
+                body = comment.body[:200] + "..." if len(comment.body) > 200 else comment.body
+                comments.append(f"{author}: {body}")
+        except:
+            pass
+
+        print(f"\n{'=' * 80}")
+        print(f"Bug ID: {bug_id}")
+        print(f"URL: {bug_url}")
+        print(f"Summary: {summary}")
+        print(f"Components: {', '.join(components)}")
+        print(f"Labels: {', '.join(labels) if labels else 'None'}")
+        print(f"Issue Links: {', '.join(issue_links) if issue_links else 'None'}")
+        print(f"\nDescription:\n{description[:500]}{'...' if len(description) > 500 else ''}")
+        if comments:
+            print(f"\nComments ({len(comments)} shown):")
+            for i, comment in enumerate(comments, 1):
+                print(f"  {i}. {comment}")
+        print(f"{'=' * 80}")
+
+
+def apply_label_to_bug(bug_id, label):
+    """Apply a label to a specific bug."""
+    jira_client = init_jira()
+
+    try:
+        # Get the current bug to check if it exists
+        bug = jira_client.issue(bug_id)
+        current_labels = bug.fields.labels or []
+
+        # Check if label already exists
+        if label in current_labels:
+            print(f"Label '{label}' already exists on {bug_id}")
+            return
+
+        # Add the new label
+        new_labels = current_labels + [label]
+        bug.update(fields={"labels": new_labels})
+
+        bug_url = get_jira_issue_url(bug_id)
+        print(f"✓ Successfully applied label '{label}' to {bug_id}")
+        print(f"  URL: {bug_url}")
+        print(f"  Summary: {bug.fields.summary}")
+        print(f"  All labels: {', '.join(new_labels)}")
+
+    except Exception as ex:
+        print(f"Error applying label to {bug_id}: {ex}")
+
 
 def list_old_bot_bugs():
     """List bug issues assigned to 'sdn-team-bot' that are older than 4 months"""
@@ -1285,6 +1400,27 @@ def list_old_bot_bugs():
     if not found_old:
         print("No bug issues older than 4 months found.")
 
+def run_label_bugs_with_claude():
+    """Run Claude Code to automatically label bugs using AI."""
+
+    # Check if claude command is available
+    if not shutil.which("claude"):
+        print("Error: 'claude' command not found. Make sure Claude Code is installed.")
+        return 1
+
+    print("Running Claude Code to label bugs...")
+    print("=" * 80)
+    try:
+        result = subprocess.run(
+            ["claude", "-p", "/label-bugs --api"],
+            check=True,
+        )
+        return result.returncode
+    except subprocess.CalledProcessError as e:
+        print(f"Error running Claude Code: {e}")
+        return e.returncode
+
+
 def list_recent_bug_comments():
     """List bug issues assigned to 'sdn-team-bot' with comments for the last 4 days.."""
     from datetime import datetime, timedelta
@@ -1337,6 +1473,15 @@ def main():
         print_bug(params["print_bug"])
         return
 
+    if params.get("query"):
+        run_custom_query(params["query"])
+        return
+
+    if params.get("apply_label"):
+        bug_id, label = params["apply_label"]
+        apply_label_to_bug(bug_id, label)
+        return
+
     if params.get("recent_bot_bug_comments"):
         list_recent_bug_comments()
         return
@@ -1344,6 +1489,17 @@ def main():
     if params.get("old_bot_bugs"):
         list_old_bot_bugs()
         return
+
+    # Check if label_bugs_with_claude is the ONLY operation requested
+    label_only = (
+        params.get("label_bugs_with_claude")
+        and not params.get("process_github_issues")
+        and not params.get("jira_bugs")
+        and not params.get("jira_escalations")
+        and not params.get("new_bugs")
+    )
+    if label_only:
+        sys.exit(run_label_bugs_with_claude())
 
     if params.get("process_github_issues"):
         process_github_issues()
@@ -1370,6 +1526,10 @@ def main():
 
     if params.get("new_bugs"):
         print_unassigned_bugs()
+
+    # Run AI-powered bug labeling if requested (and not already run as the only operation)
+    if params.get("label_bugs_with_claude") and not label_only:
+        run_label_bugs_with_claude()
 
 if __name__ == "__main__":
     main()
