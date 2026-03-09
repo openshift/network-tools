@@ -1,6 +1,7 @@
 # Quick reference
 - [Download source code and install dependencies](#download-source-code-and-install-dependencies)
 - [Configure jira client](#configure-jira-client)
+- [Configure MCP JIRA Server for Claude Code](#configure-mcp-jira-server-for-claude-code)
 - [Run network_bugs_overview script](#run-network_bugs_overview-script)
 - [Documentation](#documentation)
 
@@ -37,6 +38,77 @@ secrets = {
     "token": "your_token",
 }
 ```
+
+## Configure MCP JIRA Server for Claude Code
+
+If you're using [Claude Code](https://claude.ai/code), you can enable the MCP JIRA server to allow Claude to interact with JIRA directly without running Python scripts. This enables Claude to:
+- Search for bugs using JQL queries
+- Fetch bug details, comments, and metadata
+- Create, update, and label issues
+- Manage sprints, boards, and workflows
+
+### Setup Instructions
+
+1. **Generate a JIRA Personal Access Token** (same as above - go to https://issues.redhat.com → Profile → Personal Access Tokens → Create token)
+
+2. **Configure MCP Server in Claude Code**:
+
+   Open your project in Claude Code, then run:
+   ```bash
+   claude mcp add
+   ```
+
+   Or manually edit `.claude/settings.json` in your project directory and add the following MCP server configuration:
+
+   ```json
+   {
+     "mcpServers": {
+       "jira-atlassian": {
+         "type": "stdio",
+         "command": "podman",
+         "args": [
+           "run",
+           "--rm",
+           "-i",
+           "-e", "JIRA_URL",
+           "-e", "JIRA_PERSONAL_TOKEN",
+           "-e", "JIRA_SSL_VERIFY",
+           "ghcr.io/sooperset/mcp-atlassian:latest"
+         ],
+         "env": {
+           "JIRA_URL": "https://issues.redhat.com",
+           "JIRA_PERSONAL_TOKEN": "YOUR_TOKEN_HERE",
+           "JIRA_SSL_VERIFY": "true"
+         }
+       }
+     }
+   }
+   ```
+
+3. **Replace `YOUR_TOKEN_HERE`** with your actual JIRA personal access token
+
+4. **Restart Claude Code** to load the MCP server
+
+5. **Verify the setup** by running `/mcp` in Claude Code to see available JIRA tools
+
+### Usage with Claude Code
+
+Once configured, you can ask Claude to:
+- "Find all unresolved bugs assigned to me in JIRA"
+- "Search for bugs in OCPBUGS project related to networking"
+- "Get details for OCPBUGS-12345"
+- "Create a new bug in project OCPBUGS"
+- "Update bug OCPBUGS-12345 with label SDN:Platform:OVNK"
+
+You can also use the built-in `/label-bugs` command to automatically analyze and label unlabeled networking bugs:
+- `/label-bugs` - Analyze unlabeled bugs and apply appropriate area labels
+- `/label-bugs --dry-run` - Preview what labels would be applied without making changes
+
+The `/label-bugs` command uses AI to analyze bug content and automatically assigns the appropriate SDN area labels based on the mapping in `area_labels.csv`.
+
+See the [MCP JIRA documentation](https://github.com/sooperset/mcp-atlassian) for all available tools and capabilities.
+
+**Important**: Keep your JIRA personal access token secret. Do not commit `.claude/settings.json` to version control if it contains your token. Consider adding it to `.gitignore`.
 
 ## Run network_bugs_overview script
 The available input arguments are the following:

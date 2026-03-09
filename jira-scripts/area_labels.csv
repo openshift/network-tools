@@ -1,0 +1,45 @@
+ALL Backports,SDN:Backport
+Bug caused due to lack of test coverage?,SDN:LackingTestCoverage
+All SDN Bugs (no need to split on Area),SDN:Platform:SDN
+CNO,SDN:Platform:CNO
+HyperShift Specific,SDN:Platform:HyperShift
+MicroShift Specific,SDN:Platform:MicroShift
+CNCC,SDN:Platform:CNCC
+Ingress Node Firewall,SDN:Platform:IngressNodeFirewall
+OVNK/OVN (anything that doesn't fit on the feature level),SDN:Platform:OVNK
+"MCO, ConfigureOVS",SDN:Platform:OVS-Configure
+SAST Scans,SDN-SAST-SCAN
+Scale,SDN:Scale
+"RBAC, NodeIdentity, Certificates",SDN:Security
+CVE,SDN:CVE
+CI,SDN:CI
+"ART Bumps, Dockerfile changes, OVN Bump",SDN-ART-BUMP
+"MustGather, NetworkTools",SDN:Tooling
+Metrics,SDN:Metrics
+SNO,SDN:Platform:SNO
+Secondary Networks (NAD),SDN:OVNK:SecondaryNetworks
+UDN Primary,SDN:OVNK:UserDefinedNetworks:Primary
+UDN Secondary,SDN:OVNK:UserDefinedNetworks:Secondary
+BGP Area,SDN:OVNK:BGP
+QE can reproduce from customer bug,QE:Reproduced
+EgressQoS,SDN:OVNK:EgressQoS
+EgressIP,SDN:OVNK:EgressIP
+EgressFirewall,SDN:OVNK:EgressFirewall
+IPSEC,SDN:OVNK:IPSEC
+APBRoute,SDN:OVNK:APBR
+NetworkPolicy,SDN:OVNK:NetworkPolicy
+AdminNetworkPolicy,SDN:OVNK:AdminNetworkPolicy
+Multicast,SDN:OVNK:Multicast
+HCP Live Migration,SDN:OVNK:KubevirtVMLiveMigration
+CNI Live Migration,SDN:OVNK:CNILiveMigration
+CNI Offline Migration,SDN:OVNK:CNIOfflineMigration
+OVNK MTU Migration,SDN:OVNK:MTUMigration
+EgressRouter,SDN:OVNK:EgressRouter
+"Services, EndpointSlices",SDN:OVNK:SVC&EPS
+"IPAM, AddLogicalPort, PodCNI",SDN:OVNK:Pods
+"Anything in NodePkg, Gateway",SDN:OVNK:NodeController
+Anything in DefaultNetController,SDN:OVNK:ZoneController
+Anything in ClusterManager,SDN:OVNK:ClusterManager
+old ICNI ones <=4.13,SDN:OVNK:ICNI
+DPU,SDN:OVNK:DPU
+Egress service,SDN:OVNK:EgressService
