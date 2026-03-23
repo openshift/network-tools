@@ -26,6 +26,27 @@ DEFAULT_JIRA_ASSIGNEE = "bbennett"
 EXTERNAL_JIRA_ASSIGNEE = "external" # placeholder for all assignees not in the team list
 SDN_TEAM_BOT_ASSIGNEE = "sdn-team-bot"
 
+# Jira Cloud uses accountId instead of username. This mapping translates
+# accountId -> RH_DEVELOPERS username so we can still key developers by email.
+ACCOUNT_ID_TO_USERNAME = {
+    "70121:0fad7649-85f6-49ed-a247-7d7641862d42": "rhn-support-arghosh",   # Arnab Ghosh
+    "712020:892d7637-f1cd-4db8-987f-1f0d225cc88c": "rh-ee-arsen",          # Arkadeep Sen
+    "712020:61bf71fd-6ba7-45de-98b4-3b34bb510754": "rh-ee-mapower",        # Marty Power
+    "712020:5b2f5683-e0c3-4e7d-8a6a-6b844a91af04": "jcaamano",             # Jaime Caamano
+    "712020:b94122c9-36dc-4439-a554-3b2f0a115212": "jluhrsen",             # Jamo Luhrsen
+    "712020:9b800968-bef3-40de-98dd-c2e19c216c28": "rh-ee-ljouin",         # Lionel Jouin
+    "712020:8b6d2da9-7640-4f54-bdd0-30d80e452597": "rh-ee-mdallagl",       # Matteo Dallaglio
+    "70121:1c35a408-cf23-4145-9827-b1cc93cbd64f": "rhn-support-misalunk",  # Miheer Salunke
+    "626ba32ce2f47a00682fbfc0":                    "mkennell",              # Martin Kennelly
+    "712020:7d812864-56db-4370-ac8b-78d97167ff6a": "pdiak",                # Patryk Diak
+    "712020:dbfcf885-e73f-4f5b-ab55-4d78a352993e": "pepalani",             # Periyasamy Palanisamy
+    "5c6e1f975b4c2675327432d4":                    "pliurh",               # Peng Liu
+    "712020:798b9615-fcf0-4d2e-8830-24e0bf482a04": "rravaiol",             # Riccardo Ravaioli
+    "626b009fa32183006f2587ca":                    "sseethar",             # Surya Seetharaman
+    "712020:b3d7a67e-6fe1-4aea-8a2f-733c0ccf302d": SDN_TEAM_BOT_ASSIGNEE, # sdn-team bot
+    "70121:4fef5383-e773-49b8-bc72-258f4db6ed69":  DEFAULT_JIRA_ASSIGNEE,  # Ben Bennett
+}
+
 # WARNING 2025: the jira ID for new hires seems to be always prefixed with "rh-ee-" now
 RH_DEVELOPERS = (
     # "asuryana",
@@ -367,7 +388,7 @@ def align_jira_with_open_github_issues(github_issues):
                 matching_jira_details[jira_story.key] = {
                     "is_open": jira_story_is_open,
                     "url": get_jira_issue_url(jira_story.key),
-                    "assignee": jira_story.fields.assignee.name,
+                    "assignee": ACCOUNT_ID_TO_USERNAME.get(jira_story.fields.assignee.accountId, jira_story.fields.assignee.accountId) if jira_story.fields.assignee else None,
                 }
                 found_matching_jira = True
 
@@ -780,9 +801,10 @@ def process_jira_bugs(bugs, developers, quick=False):
     external_assignee, external_assignee_mail = get_username_and_usermail_from_assignee(EXTERNAL_JIRA_ASSIGNEE)
 
     for bug in bugs:
-        assignee = bug.get_field("assignee").name if bug.get_field("assignee") else None
-        if not assignee:
+        assignee_field = bug.get_field("assignee")
+        if not assignee_field:
             continue
+        assignee = ACCOUNT_ID_TO_USERNAME.get(assignee_field.accountId, EXTERNAL_JIRA_ASSIGNEE)
         assignee_user, assignee_mail = get_username_and_usermail_from_assignee(assignee)
         # values for status: new, assigned, on_dev, post, on_qa, verified, modified,
         # release_pending, closed
