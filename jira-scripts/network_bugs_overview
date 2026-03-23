@@ -1119,11 +1119,13 @@ def print_unassigned_bugs():
         bug_summary = bug.get_field("summary")
         bug_issuetype = bug.get_field("issuetype")
         if str(bug_issuetype) == "Bug" and "OCPBUGS" in str(bug):
-            bug_px_score = bug.get_field("customfield_12322244")
-            if bug_px_score is not None:
-                bug_px_score=int(bug_px_score)
-            else:
-                bug_px_score= "no px score"
+            bug_px_score = getattr(bug.fields, "customfield_11003", None)
+            try:
+                bug_px_score = int(bug_px_score) if bug_px_score is not None else None
+            except (ValueError, TypeError):
+                bug_px_score = None
+            if bug_px_score is None:
+                bug_px_score = "no px score"
             print(f"- [{bug}]({bug_url}) - [{bug_px_score}] {bug_summary}")
         else:
             print(f"- [{bug}]({bug_url}) - {bug_summary}")
