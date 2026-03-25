@@ -46,6 +46,7 @@ ACCOUNT_ID_TO_USERNAME = {
     "712020:b3d7a67e-6fe1-4aea-8a2f-733c0ccf302d": SDN_TEAM_BOT_ASSIGNEE,  # sdn-team bot
     "70121:4fef5383-e773-49b8-bc72-258f4db6ed69":  DEFAULT_JIRA_ASSIGNEE,  # Ben Bennett
 }
+USERNAME_TO_ACCOUNT_ID = {v: k for k, v in ACCOUNT_ID_TO_USERNAME.items()}
 
 # WARNING 2025: the jira ID for new hires seems to be always prefixed with "rh-ee-" now
 RH_DEVELOPERS = (
@@ -155,6 +156,20 @@ TEAM_COMPONENTS = (
 )
 ASSIGN_WINDOW_DAYS = 21  # 3 weeks in a sprint
 
+def text_to_adf(text):
+    """Convert plain text to Atlassian Document Format required by Jira API v3."""
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": text}],
+            }
+        ],
+    }
+
+
 def render_rh_developers(name):
     if name.startswith("rhn-support-"):
         return name[len("rhn-support-") :]
@@ -169,7 +184,7 @@ def extract_number_from_jira_id(jira_id):
 
 
 def get_jira_issue_url(jira_issue):
-    return f"https://issues.redhat.com/browse/{jira_issue}"
+    return f"https://redhat.atlassian.net/browse/{jira_issue}"
 
 
 def init_developers_dict():
@@ -250,17 +265,10 @@ def get_query_for_unresolved_jira_stories_tracking_github_issues():
 
 
 def get_jira_assignee_from_github_user(github_user):
-    # When we read or create a story, our jira server is not really consistent in the
-    # assignee format it accepts:
-    # - if a user has an alias, the assignee should be the user name (not the email address)
-    # - if a user has no alias, the assignee should be the email address
+    # Jira API v3 requires accountId for assignee fields.
     jira_user = GITHUB_TO_JIRA_USERS.get(github_user) or DEFAULT_JIRA_ASSIGNEE
-    _, jira_mail = get_username_and_usermail_from_assignee(jira_user)
-    jira_alias, _ = get_alias_and_email_alias_from_username(jira_user)
-    jira_assignee = jira_mail
-    if jira_alias:
-        jira_assignee = jira_user
-    return jira_assignee, jira_user
+    account_id = USERNAME_TO_ACCOUNT_ID.get(jira_user)
+    return account_id, jira_user
 
 
 def open_or_close_jira_story(jira_client, jira_id, action_open=True, comment=""):
@@ -282,7 +290,7 @@ def open_or_close_jira_story(jira_client, jira_id, action_open=True, comment="")
         # Let's add the comment separately.
         if action_open:
             try:
-                jira_client.add_comment(jira_id, comment)
+                jira_client.add_comment(jira_id, text_to_adf(comment))
             except Exception as ex:
                 print(f"--> Failed to add comment to {jira_url}: {comment}. Error: {ex}")
 
@@ -329,7 +337,7 @@ def align_jira_assignee_with_github(jira_client, github_id, github_dict, jira_id
 
     expected_jira_assignee, jira_user = get_jira_assignee_from_github_user(github_assignee)
 
-    if jira_assignee in (expected_jira_assignee, jira_user):
+    if jira_assignee == jira_user:
         return
 
     print(
@@ -398,15 +406,15 @@ def align_jira_with_open_github_issues(github_issues):
             new_jira_description = (
                 f"Tracking ovn-kubernetes upstream issue: {github_issue_url}"
             )
-            new_jira_assignee, _ = get_jira_assignee_from_github_user(github_issue_assignee)
+            new_jira_assignee, new_jira_user = get_jira_assignee_from_github_user(github_issue_assignee)
             # Create a new Jira story
             try:
                 new_jira = jira_client.create_issue(
                     project={"key": "CORENET"},
                     summary=new_jira_summary[:255],  # jira summary must be < 255 characters
-                    description=new_jira_description,
+                    description=text_to_adf(new_jira_description),
                     issuetype={"name": "Story"},
-                    assignee={"name": new_jira_assignee},
+                    assignee={"accountId": new_jira_assignee},
                     customfield_12311140=JIRA_EPIC_FOR_GITHUB_ISSUES,
                 )
             except Exception as ex:
@@ -421,7 +429,7 @@ def align_jira_with_open_github_issues(github_issues):
                 matching_jira_details[new_jira.key] = {
                     "is_open": True,
                     "url": get_jira_issue_url(new_jira.key),
-                    "assignee": new_jira_assignee}
+                    "assignee": new_jira_user}
 
     # Print a list of created jira stories
     if created_jira_stories:
@@ -573,7 +581,7 @@ def init_queries(clients, jira_bugs=True, jira_escalations=False):
 
 
 def init_jira():
-    return JIRA("https://issues.redhat.com", token_auth=secrets["token"], kerberos=True)
+    return JIRA(options={"server": "https://redhat.atlassian.net", "rest_api_version": "3"}, basic_auth=(secrets["email"], secrets["token"]))
 
 
 def init_clients(jira_=True):
@@ -688,7 +696,7 @@ def run_jira_query(jira_api, query, expand_changelog=False):
     max_attempts = 100
     for i in range(max_attempts):
         try:
-            res = jira_api.search_issues(query, expand=expand_value, maxResults=False)
+            res = jira_api.search_issues(query, expand=expand_value, maxResults=False, use_post=True)
         except Exception as ex:
             # print("[attempt {}] Error running JIRA query {}, error: {}".format(
             #     i, query, ex))
@@ -742,7 +750,7 @@ def was_jira_bug_recently_assigned(bug):
     # Evaluate whether the bug
     # Example of the changelog field for a jira bug:
     # {'id': '41700442',
-    #  'author': {'self': 'https://issues.redhat.com/rest/api/2/user?username=rravaiol%40redhat.com',
+    #  'author': {'self': 'https://redhat.atlassian.net/rest/api/3/user?username=rravaiol%40redhat.com',
     #   'name': 'rravaiol@redhat.com',
     #   'key': 'JIRAUSER165708',
     #   'emailAddress': 'rravaiol@redhat.com',
