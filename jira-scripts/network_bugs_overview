@@ -581,7 +581,17 @@ def init_queries(clients, jira_bugs=True, jira_escalations=False):
 
 
 def init_jira():
-    return JIRA(options={"server": "https://redhat.atlassian.net", "rest_api_version": "3"}, basic_auth=(secrets["email"], secrets["token"]))
+    jira_client = JIRA(options={"server": "https://redhat.atlassian.net", "rest_api_version": "3"}, basic_auth=(secrets["email"], secrets["token"]))
+    # Verify authentication works - the search endpoint returns 200 even
+    # with invalid credentials (just hides private bugs), so check /myself
+    try:
+        url = jira_client._get_url('myself')
+        r = jira_client._session.get(url)
+    except Exception as ex:
+        sys.exit(f"Jira API token authentication failed. Generate a new token at "
+                 f"https://id.atlassian.com/manage-profile/security/api-tokens\n"
+                 f"Error: {ex}")
+    return jira_client
 
 
 def init_clients(jira_=True):
