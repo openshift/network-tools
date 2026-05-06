@@ -43,6 +43,7 @@ ACCOUNT_ID_TO_USERNAME = {
     "626b009fa32183006f2587ca":                    "sseethar",             # Surya Seetharaman
     "712020:d16c453d-e3cf-4796-aebb-a70394b1d715": "tasing",               # Tanya Singh
     "712020:e8f1060c-5b95-413b-8e1d-8d2bd5d1d472": "shbehera",             # Shreyas Behera
+    "712020:264e7000-6293-4c58-b0c2-35a605bebb9f": "raprosa",              # Raphael Rosa
     "712020:b3d7a67e-6fe1-4aea-8a2f-733c0ccf302d": SDN_TEAM_BOT_ASSIGNEE,  # sdn-team bot
     "712020:1212e771-04ed-4290-b4cd-906bad29a20e": DEFAULT_JIRA_ASSIGNEE,  # core-networking-bot
 }
@@ -66,6 +67,7 @@ RH_DEVELOPERS = (
     "sseethar",
     "tasing",
     "shbehera",
+    "raprosa",
     # "tpanteli",
     # "yboaron",
     EXTERNAL_JIRA_ASSIGNEE,  # placeholder for bugs in our components owned by external memebers
@@ -91,6 +93,7 @@ GITHUB_TO_JIRA_USERS = {
     "tssurya": "sseethar",
     "taanyas": "tasing",
     "shreyasbe": "shbehera",
+    "raphaelvrosa": "raprosa",
     # "yboaron": "yboaron",
 }
 
@@ -532,9 +535,9 @@ def retrieve_unassigned_jira_bugs():
     clients = init_clients(jira_=True)
     SDN_OCPBUGS_FILTER = 'project = OCPBUGS AND component in ("Networking / openshift-sdn", "Networking / ovn-kubernetes", "Networking / cloud-network-config-controller", "Networking / ingress-node-firewall", "Networking / cluster-network-operator", "Networking / network-tools")'
     query = (
-        f'(({SDN_OCPBUGS_FILTER}) OR project = RHOCPPRIO AND component in ("networking/sdn") '
-        "OR project = CORENET AND issuetype = Bug) AND resolution = Unresolved AND ((project = OCPBUGSM OR project = "
-        'OCPBUGS) AND assignee = "core-networking-bot@redhat.com" OR project = RHOCPPRIO AND assignee in ('
+        f'(({SDN_OCPBUGS_FILTER}) OR project = RHOCPPRIO AND component in ("networking/sdn")) '
+        " AND resolution = Unresolved AND ((project = OCPBUGSM OR project = "
+        'OCPBUGS) AND assignee in("core-networking-bot@redhat.com","bbennett@redhat.com") OR project = RHOCPPRIO AND assignee in ('
         '"anbhat@redhat.com", "zshi@redhat.com") OR assignee is EMPTY) ORDER BY Rank DESC'
     )
     bugs = run_jira_query(clients[JIRA_KEY], query)
