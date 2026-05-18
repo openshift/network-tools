@@ -31,6 +31,7 @@ SDN_TEAM_BOT_ASSIGNEE = "sdn-team-bot"
 ACCOUNT_ID_TO_USERNAME = {
     "70121:0fad7649-85f6-49ed-a247-7d7641862d42":  "arghosh",              # Arnab Ghosh
     "712020:892d7637-f1cd-4db8-987f-1f0d225cc88c": "arsen",                # Arkadeep Sen
+    "6081c76429f108006a8ae9a2":                     "bpickard",             # Ben Pickard
     "712020:61bf71fd-6ba7-45de-98b4-3b34bb510754": "mapower",              # Marty Power
     "712020:5b2f5683-e0c3-4e7d-8a6a-6b844a91af04": "jcaamano",             # Jaime Caamano
     "712020:b94122c9-36dc-4439-a554-3b2f0a115212": "jluhrsen",             # Jamo Luhrsen
@@ -54,6 +55,7 @@ RH_DEVELOPERS = (
     # "asuryana",
     "arghosh",
     "arsen",
+    "bpickard",
     "mapower",
     "jcaamano",
     "jluhrsen",
@@ -78,6 +80,7 @@ RH_DEVELOPERS = (
 GITHUB_TO_JIRA_USERS = {
     "arghosh93": "arghosh",
     "arkadeepsen": "arsen",
+    "bpickard22": "bpickard",
     # "aswinsuryan": "asuryana",
     "marty-power": "mapower",
     "jcaamano": "jcaamano",
