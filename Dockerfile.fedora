@@ -5,9 +5,9 @@
 # This image is only for development environment, so please DO NOT DEPLOY
 # this image in any production environment.
 #
-FROM registry.ci.openshift.org/ocp/4.12:ovn-kubernetes AS ovnkube-trace
+FROM registry.ci.openshift.org/ocp/4.22:ovn-kubernetes AS ovnkube-trace
 
-FROM registry.ci.openshift.org/ocp/4.12:tools AS tools
+FROM registry.ci.openshift.org/ocp/4.22:tools AS tools
 
 FROM fedora:latest
 COPY --from=ovnkube-trace /usr/bin/ovnkube-trace /usr/bin/
@@ -41,7 +41,6 @@ RUN INSTALL_PKGS="\
     ltrace \
     mailx \
     net-tools \
-    nginx \
     nmap-ncat \
     numactl \
     parted \
@@ -62,8 +61,8 @@ RUN INSTALL_PKGS="\
     wireshark-cli \
     xfsprogs \
     " && \
-    yum -y install --setopt=tsflags=nodocs --setopt=skip_missing_names_on_install=False $INSTALL_PKGS && \
-    yum clean all && rm -rf /var/cache/*
+    dnf -y install --setopt=tsflags=nodocs $INSTALL_PKGS && \
+    dnf clean all && rm -rf /var/cache/*
 
 COPY debug-scripts/ /opt/bin/
 # remove internal scripts from the image and create a symlink for network-tools and gather entrypoint for must-gather
