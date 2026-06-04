@@ -31,7 +31,7 @@ SDN_TEAM_BOT_ASSIGNEE = "sdn-team-bot"
 ACCOUNT_ID_TO_USERNAME = {
     "70121:0fad7649-85f6-49ed-a247-7d7641862d42":  "arghosh",              # Arnab Ghosh
     "712020:892d7637-f1cd-4db8-987f-1f0d225cc88c": "arsen",                # Arkadeep Sen
-    "6081c76429f108006a8ae9a2":                     "bpickard",             # Ben Pickard
+    "6081c76429f108006a8ae9a2":                    "bpickard",             # Ben Pickard
     "712020:61bf71fd-6ba7-45de-98b4-3b34bb510754": "mapower",              # Marty Power
     "712020:5b2f5683-e0c3-4e7d-8a6a-6b844a91af04": "jcaamano",             # Jaime Caamano
     "712020:b94122c9-36dc-4439-a554-3b2f0a115212": "jluhrsen",             # Jamo Luhrsen
@@ -45,6 +45,7 @@ ACCOUNT_ID_TO_USERNAME = {
     "712020:d16c453d-e3cf-4796-aebb-a70394b1d715": "tasing",               # Tanya Singh
     "712020:e8f1060c-5b95-413b-8e1d-8d2bd5d1d472": "shbehera",             # Shreyas Behera
     "712020:264e7000-6293-4c58-b0c2-35a605bebb9f": "raprosa",              # Raphael Rosa
+    "712020:0238685a-c534-4711-abbf-47dbd961cc49": "vpalmier",             # Vincenzo Palmieri
     "712020:b3d7a67e-6fe1-4aea-8a2f-733c0ccf302d": SDN_TEAM_BOT_ASSIGNEE,  # sdn-team bot
     "712020:1212e771-04ed-4290-b4cd-906bad29a20e": DEFAULT_JIRA_ASSIGNEE,  # core-networking-bot
 }
@@ -70,6 +71,7 @@ RH_DEVELOPERS = (
     "tasing",
     "shbehera",
     "raprosa",
+    "vpalmier",
     # "tpanteli",
     # "yboaron",
     EXTERNAL_JIRA_ASSIGNEE,  # placeholder for bugs in our components owned by external memebers
@@ -97,6 +99,7 @@ GITHUB_TO_JIRA_USERS = {
     "taanyas": "tasing",
     "shreyasbe": "shbehera",
     "raphaelvrosa": "raprosa",
+    "vinnie1110": "vpalmier",
     # "yboaron": "yboaron",
 }
 
