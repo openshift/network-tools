@@ -46,6 +46,11 @@ ACCOUNT_ID_TO_USERNAME = {
     "712020:e8f1060c-5b95-413b-8e1d-8d2bd5d1d472": "shbehera",             # Shreyas Behera
     "712020:264e7000-6293-4c58-b0c2-35a605bebb9f": "raprosa",              # Raphael Rosa
     "712020:0238685a-c534-4711-abbf-47dbd961cc49": "vpalmier",             # Vincenzo Palmieri
+    "712020:81015569-8496-48f1-a5c3-47d0794ed9a5": "anusaxen",             # Anurag Saxena
+    "712020:fac00bc5-7c46-4313-88c6-cd6bb0d0742e": "asood",                # Arti Sood
+    "61a964c8d5986c006a50cfef":                    "jechen",               # Jean Chen
+    "712020:976b86c2-0b4a-4d24-b1e4-182b19475197": "sninganu",             # Sachin Ninganure
+    "70121:93c82c86-a83d-4bf9-9dd7-21838b713d3e" : "weliang",              # Weibin Liang
     "712020:b3d7a67e-6fe1-4aea-8a2f-733c0ccf302d": SDN_TEAM_BOT_ASSIGNEE,  # sdn-team bot
     "712020:1212e771-04ed-4290-b4cd-906bad29a20e": DEFAULT_JIRA_ASSIGNEE,  # core-networking-bot
 }
@@ -72,6 +77,11 @@ RH_DEVELOPERS = (
     "shbehera",
     "raprosa",
     "vpalmier",
+    "anusaxen",
+    "asood",
+    "jechen",
+    "sninganu",
+    "weliang",
     # "tpanteli",
     # "yboaron",
     EXTERNAL_JIRA_ASSIGNEE,  # placeholder for bugs in our components owned by external memebers
