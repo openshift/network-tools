@@ -47,7 +47,6 @@ ACCOUNT_ID_TO_USERNAME = {
     "712020:b3d7a67e-6fe1-4aea-8a2f-733c0ccf302d": SDN_TEAM_BOT_ASSIGNEE,  # sdn-team bot
     "712020:1212e771-04ed-4290-b4cd-906bad29a20e": DEFAULT_JIRA_ASSIGNEE,  # core-networking-bot
 }
-USERNAME_TO_ACCOUNT_ID = {v: k for k, v in ACCOUNT_ID_TO_USERNAME.items()}
 
 # WARNING 2025: the jira ID for new hires seems to be always prefixed with "rh-ee-" now
 RH_DEVELOPERS = (
@@ -77,29 +76,6 @@ RH_DEVELOPERS = (
     DEFAULT_JIRA_ASSIGNEE,   # special user acting as our team default assignee
 )
 
-GITHUB_TO_JIRA_USERS = {
-    "arghosh93": "arghosh",
-    "arkadeepsen": "arsen",
-    "bpickard22": "bpickard",
-    # "aswinsuryan": "asuryana",
-    "marty-power": "mapower",
-    "jcaamano": "jcaamano",
-    "jluhrsen": "jluhrsen",
-    # "JacobTanenbaum": "jtanenba",
-    "LionelJouin":"ljouin",
-    "martinkennelly": "mkennell",
-    "mattedallo": "mdallagl",
-    "miheer": "misalunk",
-    "kyrtapz": "pdiak",
-    "pperiyasamy": "pepalani",
-    # "tpantelis": "tpanteli",
-    "tssurya": "sseethar",
-    "taanyas": "tasing",
-    "shreyasbe": "shbehera",
-    "raphaelvrosa": "raprosa",
-    "vinnie1110": "vpalmier",
-    # "yboaron": "yboaron",
-}
 
 ALIASES_TO_USERNAMES = {
     # alias:  username
