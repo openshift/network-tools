@@ -851,6 +851,9 @@ def process_jira_bugs(bugs, developers, quick=False):
         bug_id = str(bug.key)
         creation_time = bug.get_field("created")
         summary = bug.get_field("summary")
+        # skip dummy bugs
+        if summary and "(dummy bug)" in summary.lower():
+            continue
         components = [c.name.lower() for c in bug.get_field("components")]
         fix_versions = [
             v.name for v in bug.get_field("fixVersions")
