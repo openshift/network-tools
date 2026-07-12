@@ -4,11 +4,9 @@ reviewers:
   - jcaamano
   - jluhrsen
   - kyrtapz
-  - martinkennelly
   - marty-power
   - mattedallo
   - miheer
-  - pliurh
   - pperiyasamy
   - ricky-rav
   - taanyas
@@ -19,10 +17,8 @@ approvers:
   - arghosh93
   - danwinship
   - knobunc
-  - pliurh
   - ricky-rav
   - tssurya
-  - zshi-redhat
 
 # Bugzilla info; "ovn-kubernetes" is wrong but there is no "generic networking" subcomponent
 component: Networking
