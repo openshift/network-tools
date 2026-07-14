@@ -16,6 +16,7 @@ RUN rm -rf /opt/bin/local-scripts && ln -s /opt/bin/network-tools /usr/bin/netwo
 
 # Make sure to maintain alphabetical ordering when adding new packages.
 RUN INSTALL_PKGS="\
+    containerd \
     conntrack-tools \
     iproute \
     nginx \
