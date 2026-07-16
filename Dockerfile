@@ -17,8 +17,8 @@ RUN rm -rf /opt/bin/local-scripts && ln -s /opt/bin/network-tools /usr/bin/netwo
 # Make sure to maintain alphabetical ordering when adding new packages.
 RUN INSTALL_PKGS="\
     conntrack-tools \
-    iproute \
     iperf3 \
+    iproute \
     nginx \
     numactl \
     traceroute \
