@@ -18,6 +18,7 @@ RUN rm -rf /opt/bin/local-scripts && ln -s /opt/bin/network-tools /usr/bin/netwo
 RUN INSTALL_PKGS="\
     conntrack-tools \
     iproute \
+    iperf3 \
     nginx \
     numactl \
     traceroute \
