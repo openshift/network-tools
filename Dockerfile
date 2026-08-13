@@ -1,6 +1,7 @@
 FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.26-openshift-5.0 AS builder
 WORKDIR /go/src/github.com/openshift/network-tools
 COPY . .
+RUN go mod vendor && make build-e2e-tests && gzip -9 test/bin/network-tools-tests-ext
 
 # needed for ovnkube-trace
 FROM registry.ci.openshift.org/ocp/5.0:ovn-kubernetes AS ovnkube-trace
@@ -8,6 +9,7 @@ FROM registry.ci.openshift.org/ocp/5.0:ovn-kubernetes AS ovnkube-trace
 # tools (openshift-tools) is based off cli
 FROM registry.ci.openshift.org/ocp/5.0:tools
 COPY --from=builder /go/src/github.com/openshift/network-tools/debug-scripts/ /opt/bin/
+COPY --from=builder /go/src/github.com/openshift/network-tools/test/bin/network-tools-tests-ext.gz /usr/bin/network-tools-tests-ext.gz
 COPY --from=ovnkube-trace /usr/bin/ovnkube-trace /usr/bin/
 
 # remove internal scripts from the image and create a symlink for network-tools and gather entrypoint for must-gather
