@@ -22,3 +22,8 @@ build-image-network-tools-test:
 	podman build --no-cache -f ./Dockerfile.fedora -t network-tools-test .
 
 .PHONY: build-image-network-tools-test
+
+build-e2e-tests:
+	$(MAKE) -C test build
+
+.PHONY: build-e2e-tests
