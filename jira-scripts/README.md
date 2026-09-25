@@ -43,7 +43,7 @@ The available input arguments are the following:
 
 ```
 $ ./network_bugs_overview -h
-usage: network_bugs_overview [-h] [--jira-bugs] [--jira-escalations] [-v] [-q] [-n] [-g] [--old-bugs]
+usage: network_bugs_overview [-h] [--jira-bugs] [--jira-escalations] [-v] [-q] [-n] [--old-bugs]
 
 options:
   -h, --help            show this help message and exit
@@ -52,15 +52,12 @@ options:
   -v, --verbose         Print detailed results
   -q, --quick           Skip assign analysis and get results more quickly
   -n, --new-bugs        Print currently unassigned bugs in a markup format
-  -g, --process-github-issues
-                        For each ovn-org/ovn-kubernetes github issue with the ci-flake label, make sure a corresponding jira ticket exists
   --old-bugs            Print a list of bugs that have been in the new state for more than 30 days
 ```
 
 By running the python script as is, it will execute by default the following:
-1. it will make that sure all ovn-k upstream issues with the ci-flake label are tracked in jira ("--process-github-issues" above);
-2. it will query the jira server for assigned bugs in the OCPBUGS project and output a ranking of team members according to their bug load ("--jira-bugs" above);
-3. it will print a list of unassigned bugs in a markup format ("--new-bugs" above):
+1. it will query the jira server for assigned bugs in the OCPBUGS project and output a ranking of team members according to their bug load ("--jira-bugs" above);
+2. it will print a list of unassigned bugs in a markup format ("--new-bugs" above):
 
 ```
 ./network_bugs_overview
@@ -73,7 +70,7 @@ Alternatively, you can specify the single actions to execute:
 ```
 
 ```
-./network_bugs_overview --process-github-issues --quick
+./network_bugs_overview --jira-bugs --quick
 ```
 
 You can also print a quick version of the team bug load, by skipping the "assigned <=21 days" column, which often takes a long time to run:

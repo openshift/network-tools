@@ -20,8 +20,6 @@ class colors:
     BOLD = "\033[1m"
 
 
-JIRA_EPIC_FOR_GITHUB_ISSUES = "CORENET-3945"
-GITHUB_ISSUES_LABEL = "kind/ci-flake"
 DEFAULT_JIRA_ASSIGNEE = "core-networking-bot"
 EXTERNAL_JIRA_ASSIGNEE = "external" # placeholder for all assignees not in the team list
 SDN_TEAM_BOT_ASSIGNEE = "sdn-team-bot"
@@ -54,7 +52,6 @@ ACCOUNT_ID_TO_USERNAME = {
     "712020:b3d7a67e-6fe1-4aea-8a2f-733c0ccf302d": SDN_TEAM_BOT_ASSIGNEE,  # sdn-team bot
     "712020:1212e771-04ed-4290-b4cd-906bad29a20e": DEFAULT_JIRA_ASSIGNEE,  # core-networking-bot
 }
-USERNAME_TO_ACCOUNT_ID = {v: k for k, v in ACCOUNT_ID_TO_USERNAME.items()}
 
 # WARNING 2025: the jira ID for new hires seems to be always prefixed with "rh-ee-" now
 RH_DEVELOPERS = (
@@ -89,29 +86,6 @@ RH_DEVELOPERS = (
     DEFAULT_JIRA_ASSIGNEE,   # special user acting as our team default assignee
 )
 
-GITHUB_TO_JIRA_USERS = {
-    "arghosh93": "arghosh",
-    "arkadeepsen": "arsen",
-    "bpickard22": "bpickard",
-    # "aswinsuryan": "asuryana",
-    "marty-power": "mapower",
-    "jcaamano": "jcaamano",
-    "jluhrsen": "jluhrsen",
-    # "JacobTanenbaum": "jtanenba",
-    "LionelJouin":"ljouin",
-    "martinkennelly": "mkennell",
-    "mattedallo": "mdallagl",
-    "miheer": "misalunk",
-    "kyrtapz": "pdiak",
-    "pperiyasamy": "pepalani",
-    # "tpantelis": "tpanteli",
-    "tssurya": "sseethar",
-    "taanyas": "tasing",
-    "shreyasbe": "shbehera",
-    "raphaelvrosa": "raprosa",
-    "vinnie1110": "vpalmier",
-    # "yboaron": "yboaron",
-}
 
 ALIASES_TO_USERNAMES = {
     # alias:  username
@@ -126,7 +100,7 @@ EXTERNAL_LABEL = "SDN-EXTERNAL-TEAM-MEMBER"
 
 # We're not using severity anymore when estimating workload, let's just keep the
 # following as comment for future reference if ever we need to use it again.
-# SEVERITY_JIRA_FIELD = "customfield_12316142"  # in OCPBUGS
+# SEVERITY_JIRA_FIELD = "customfield_10840"  # in OCPBUGS
 
 # # arbitrary numbers to weight severity, 10 is max and 1 is low
 # SEVERITY_WEIGHTS = {
@@ -234,319 +208,6 @@ def init_developers_dict():
     return developers
 
 
-def retrieve_github_issues():
-    github_repo = "ovn-org/ovn-kubernetes"
-    # (state=open to only fetch open issues)
-    github_api = f"https://api.github.com/repos/{github_repo}/issues?labels={GITHUB_ISSUES_LABEL}&state=all&per_page=100"
-    github_issues = []
-    parse_next_page = True
-    page = 1
-    while parse_next_page:
-        response = requests.get(github_api + f"&page={page}")
-        retrieved_issues = response.json()
-        if retrieved_issues:
-            github_issues.extend(retrieved_issues)
-            page += 1
-        else:
-            parse_next_page = False
-    # Filter out pull requests, which are identified by the pull_request key.
-    # https://docs.github.com/en/rest/issues/issues?apiVersion=2022-11-28
-    # WARNING: The is:issue keyword doesn't work, contrary to what the documentation says:
-    # https://docs.github.com/en/rest/search/search?apiVersion=2022-11-28#search-issues-and-pull-requests
-    github_issues = [x for x in github_issues if "pull_request" not in x]
-    print(
-        f"- Found {len(github_issues)} github issues with {GITHUB_ISSUES_LABEL} label"
-    )
-    return github_issues
-
-
-def get_query_for_jira_stories_tracking_github_issues():
-    return f'project = CORENET AND "Epic Link" = {JIRA_EPIC_FOR_GITHUB_ISSUES} AND Summary ~ "upstream-*"'
-
-
-def get_query_for_unassigned_jira_stories_tracking_github_issues():
-    _, default_assignee_mail = get_username_and_usermail_from_assignee(
-        DEFAULT_JIRA_ASSIGNEE
-    )
-    return (
-        get_query_for_jira_stories_tracking_github_issues()
-        + f' AND resolution = Unresolved AND (assignee = "{default_assignee_mail}" OR assignee is EMPTY)'
-    )
-
-
-def get_query_for_unresolved_jira_stories_tracking_github_issues():
-    _, default_assignee_mail = get_username_and_usermail_from_assignee(
-        DEFAULT_JIRA_ASSIGNEE
-    )
-    return (
-        get_query_for_jira_stories_tracking_github_issues()
-        + f' AND resolution = Unresolved AND assignee != "{default_assignee_mail}" AND assignee is not EMPTY'
-    )
-
-
-def get_jira_assignee_from_github_user(github_user):
-    # Jira API v3 requires accountId for assignee fields.
-    jira_user = GITHUB_TO_JIRA_USERS.get(github_user) or DEFAULT_JIRA_ASSIGNEE
-    account_id = USERNAME_TO_ACCOUNT_ID.get(jira_user)
-    return account_id, jira_user
-
-
-def open_or_close_jira_story(jira_client, jira_id, action_open=True, comment=""):
-    # In jira, in order to change the status of a story, you have to apply an
-    # existing transition to it:
-    # print([(t['id'], t['name']) for t in jira_client.transitions(jira_id)])
-    # [('11', 'To Do'), ('21', 'In Progress'), ('31', 'Code Review'), ('41', 'Review'), ('51', 'Closed')]
-    jira_url = get_jira_issue_url(jira_id)
-    transition = "To Do"
-    if not action_open:
-        transition = "Closed"
-    try:
-        jira_client.transition_issue(jira_id, transition, comment=comment)
-    except Exception as ex:
-        print(f"--> Failed to set jira story {jira_url} to {transition}: {ex}")
-    else:
-        # When applying a transition, a comment is added only if required (go figure...)
-        # So it's added when an issue is closed, but not when it is opened.
-        # Let's add the comment separately.
-        if action_open:
-            try:
-                jira_client.add_comment(jira_id, text_to_adf(comment))
-            except Exception as ex:
-                print(f"--> Failed to add comment to {jira_url}: {comment}. Error: {ex}")
-
-        if comment:
-            print(comment)
-
-
-def open_jira_story(jira_client, jira_id, comment=""):
-    open_or_close_jira_story(jira_client, jira_id, action_open=True, comment=comment)
-
-
-def close_jira_story(jira_client, jira_id, comment=""):
-    open_or_close_jira_story(jira_client, jira_id, action_open=False, comment=comment)
-
-
-def align_jira_status_with_github(jira_client, github_id, github_dict, jira_id, jira_dict):
-    github_is_open = github_dict["is_open"]
-    jira_is_open = jira_dict["is_open"]
-
-    if jira_is_open == github_is_open:
-        return
-
-    print_state_str = lambda x: "open" if x else "closed"
-    print(
-        f"- Github issue {github_dict['url']} is {print_state_str(github_is_open)}"
-        f" but is tracked by a {print_state_str(jira_is_open)} jira story ({jira_dict['url']})"
-    )
-
-    # Consider github status as source of truth and align jira story accordingly
-    if github_is_open and not jira_is_open:
-        comment = (f"\tReopened jira story {jira_id} since the github issue it "
-                   f"is tracking ({github_dict['url']}) is still open")
-        open_jira_story(jira_client, jira_id, comment=comment)
-
-    elif jira_is_open and not github_is_open:
-        comment = (f"\tClosed jira story {jira_id} since the github issue it "
-                   f"is tracking ({github_dict['url']}) is closed")
-        close_jira_story(jira_client, jira_id, comment=comment)
-
-
-def align_jira_assignee_with_github(jira_client, github_id, github_dict, jira_id, jira_dict):
-    github_assignee = github_dict["assignee"]
-    jira_assignee = jira_dict["assignee"]
-
-    expected_jira_assignee, jira_user = get_jira_assignee_from_github_user(github_assignee)
-
-    if jira_assignee == jira_user:
-        return
-
-    print(
-        f"- Github issue {github_dict['url']} is assigned to github user {github_assignee}"
-        f" but its jira story {jira_id} is assigned to jira user {jira_assignee} "
-        f"(expected: {expected_jira_assignee}). "
-    )
-
-    try:
-        jira_client.assign_issue(jira_id, expected_jira_assignee)
-    except Exception as ex:
-        print(f"\t--> Failed to assign {jira_id} to {expected_jira_assignee}: {ex}")
-    else:
-        print(f"\tAssigned {jira_id} to {expected_jira_assignee}")
-
-
-def align_jira_with_open_github_issues(github_issues):
-    github_details = {}
-    matching_jira_details = {}
-    github_to_jira = {}
-
-    created_jira_stories = []
-
-    jira_client = init_jira()
-    query = get_query_for_jira_stories_tracking_github_issues()
-    jira_stories = run_jira_query(jira_client, query)
-
-    for issue in github_issues:
-        github_issue_number = issue["number"]
-        github_issue_title = issue["title"]
-        github_issue_url = issue["html_url"]
-        github_issue_assignee = (
-            issue["assignee"]["login"] if issue["assignee"] else None
-        )
-        github_issue_is_open = issue.get("state", "").lower() == "open"
-        expected_summary_prefix = f"upstream-{github_issue_number}"
-
-        github_details[github_issue_number] = {
-            "url": github_issue_url,
-            "is_open": github_issue_is_open,
-            "assignee": github_issue_assignee,
-        }
-        github_to_jira[github_issue_number] = []
-
-        # Check whether the github issue already has an associated jira story
-        found_matching_jira = False
-        for jira_story in jira_stories:
-            if (
-                jira_story.fields.summary
-                and expected_summary_prefix in jira_story.fields.summary.lower()
-            ):
-                github_to_jira[github_issue_number].append(jira_story.key)
-                jira_story_is_open = (
-                    "closed" not in jira_story.fields.status.name.lower()
-                )
-                matching_jira_details[jira_story.key] = {
-                    "is_open": jira_story_is_open,
-                    "url": get_jira_issue_url(jira_story.key),
-                    "assignee": ACCOUNT_ID_TO_USERNAME.get(jira_story.fields.assignee.accountId, jira_story.fields.assignee.accountId) if jira_story.fields.assignee else None,
-                }
-                found_matching_jira = True
-
-        # Create a jira story if the github issue is open and has no story on jira yet
-        if not found_matching_jira and github_issue_is_open:
-            new_jira_summary = f"{expected_summary_prefix}: {github_issue_title}"
-            new_jira_description = (
-                f"Tracking ovn-kubernetes upstream issue: {github_issue_url}"
-            )
-            new_jira_assignee, new_jira_user = get_jira_assignee_from_github_user(github_issue_assignee)
-            # Create a new Jira story
-            try:
-                new_jira = jira_client.create_issue(
-                    project={"key": "CORENET"},
-                    summary=new_jira_summary[:255],  # jira summary must be < 255 characters
-                    description=text_to_adf(new_jira_description),
-                    issuetype={"name": "Story"},
-                    assignee={"accountId": new_jira_assignee},
-                    customfield_12311140=JIRA_EPIC_FOR_GITHUB_ISSUES,
-                )
-            except Exception as ex:
-                print(
-                    f"could not create story for github issue {github_issue_url} "
-                    f"(summary={new_jira_summary}, assignee={new_jira_assignee}, "
-                    f"description={new_jira_description}, error={ex})"
-                )
-            else:
-                created_jira_stories.append(new_jira)
-                github_to_jira[github_issue_number].append(new_jira.key)
-                matching_jira_details[new_jira.key] = {
-                    "is_open": True,
-                    "url": get_jira_issue_url(new_jira.key),
-                    "assignee": new_jira_user}
-
-    # Print a list of created jira stories
-    if created_jira_stories:
-        print()
-        print("Created the following JIRA stories:")
-        for j in created_jira_stories:
-            print("\t{}".format(get_jira_issue_url(j)))
-
-    # Print github issues and jira stories that are not in sync:
-    # 1) whenever a github issue and a jira story do not show the same status,
-    #    that is either both open or both closed
-    # 2) whenever a github issue is tracked by 0 (shouldn't happen) or more
-    #    than one open jira story  (allow closed jira stories, though, since
-    #    these might have been created erroneously and then closed as duplicates);
-    # 3) jira stories pointing to non-existing github issues
-    for github_id, jira_ids in github_to_jira.items():
-        github_url = github_details[github_id]["url"]
-        github_is_open = github_details[github_id]["is_open"]
-
-        if not jira_ids:  # should not happen
-            if github_is_open:
-                print(f"- Open github issue {github_url} is not tracked by any jira story")
-
-        elif len(jira_ids) == 1:
-            jira_id = jira_ids[0]
-
-            # check that the status is in sync
-            align_jira_status_with_github(
-                jira_client,
-                github_id,
-                github_details[github_id],
-                jira_id,
-                matching_jira_details[jira_id])
-
-            # check that the assignee is in sync
-            align_jira_assignee_with_github(
-                jira_client,
-                github_id,
-                github_details[github_id],
-                jira_id,
-                matching_jira_details[jira_id])
-
-        else:  # more than one matching jira (shouldn't happen...)
-            open_matching_jiras = [
-                j for j in jira_ids if matching_jira_details[j]["is_open"]
-            ]
-            lowest_jira_id = sorted(jira_ids, key=extract_number_from_jira_id)[0]
-            lowest_jira_url = get_jira_issue_url(lowest_jira_id)
-            if github_is_open:
-                # Lowest jira ID must correspond to the only open story.
-                if lowest_jira_id not in open_matching_jiras:
-                    open_jira_story(
-                        jira_client,
-                        lowest_jira_id,
-                        f"Reopening {lowest_jira_url} to keep track of {github_url}")
-
-                # make sure the assignee is aligned
-                align_jira_assignee_with_github(
-                    jira_client,
-                    github_id,
-                    github_details[github_id],
-                    lowest_jira_id,
-                    matching_jira_details[lowest_jira_id])
-
-                # All the other jiras should be closed
-                for jira_id in open_matching_jiras:
-                    if jira_id == lowest_jira_id:
-                        continue
-                    close_jira_story(
-                        jira_client,
-                        jira_id,
-                        comment=(f"Closing {get_jira_issue_url(jira_id)}, since "
-                                 f"{github_url} is already tracked by {lowest_jira_url}"))
-
-            else:  # github is closed
-                # close all open matching jiras
-                for jira_id in open_matching_jiras:
-                    close_jira_story(
-                        jira_client,
-                        jira_id,
-                        f"Closing {get_jira_issue_url(jira_id)}, since {github_url} is already closed")
-
-    # Finally, print jira stories pointing to non-existing github issues
-    for jira_story in jira_stories:
-        if jira_story.key not in matching_jira_details:
-            print(f"- Jira story {jira_story} doesn't track an existing github issue")
-            print(f"\turl: {get_jira_issue_url(jira_story)}")
-            print(f"\tsummary: {jira_story.fields.summary}")
-    print()
-
-
-def process_github_issues():
-    github_issues = retrieve_github_issues()
-    if github_issues:
-        align_jira_with_open_github_issues(github_issues)
-
-
 def retrieve_unassigned_jira_bugs():
     clients = init_clients(jira_=True)
     SDN_OCPBUGS_FILTER = 'project = OCPBUGS AND component in ("Networking / openshift-sdn", "Networking / ovn-kubernetes", "Networking / cloud-network-config-controller", "Networking / ingress-node-firewall", "Networking / cluster-network-operator", "Networking / network-tools")'
@@ -558,12 +219,7 @@ def retrieve_unassigned_jira_bugs():
     )
     bugs = run_jira_query(clients[JIRA_KEY], query)
 
-    upstream_issues = run_jira_query(
-        clients[JIRA_KEY],
-        get_query_for_unassigned_jira_stories_tracking_github_issues(),
-    )
-
-    return bugs + upstream_issues
+    return bugs
 
 
 def print_bug(issue_key):
@@ -590,7 +246,6 @@ def init_queries(clients, jira_bugs=True, jira_escalations=False):
         query_dict[JIRA_BUGS] = {
             "queries": [
                 init_jira_query_for_bugs(),
-                get_query_for_unresolved_jira_stories_tracking_github_issues(),
             ]
         }
 
@@ -1232,16 +887,6 @@ def parse_input_args():
         action="store_true",
     )
 
-    parser.add_argument(
-        "-g",
-        "--process-github-issues",
-        help=(
-            "For each ovn-org/ovn-kubernetes github issue with the "
-            f"{GITHUB_ISSUES_LABEL} label, "
-            "make sure a corresponding jira ticket exists"
-        ),
-        action="store_true",
-    )
 
     parser.add_argument(
         "--old-bugs",
@@ -1268,24 +913,21 @@ def parse_input_args():
     # By default jira bugs are queried and parsed. Jira escalations are not.
     # However, as soon as issue types are explicitly specified as input parameters,
     # only those that are specified are queried.
-    jira_bugs = jira_escalations = process_github_issues = new_bugs = False
+    jira_bugs = jira_escalations = new_bugs = False
     if (
         args.jira_bugs
         or args.jira_escalations
-        or args.process_github_issues
         or args.new_bugs
         or args.quick
     ):
         jira_bugs = bool(args.jira_bugs) or bool(args.quick)
         jira_escalations = bool(args.jira_escalations)
-        process_github_issues = bool(args.process_github_issues)
         new_bugs = bool(args.new_bugs)
     else:
         # Default values when no args are specified
         jira_bugs = True
         jira_escalations = False
         new_bugs = True
-        process_github_issues = True
     params = {
         "jira_bugs": jira_bugs,
         "jira_escalations": jira_escalations,
@@ -1293,7 +935,6 @@ def parse_input_args():
         "verbose": bool(args.verbose),
         "quick": bool(args.quick),
         "new_bugs": new_bugs,
-        "process_github_issues": process_github_issues,
         "print_bug": args.print_bug,
         "recent_bot_bug_comments": bool(args.recent_bot_bug_comments),
         "old_bot_bugs": bool(args.old_bot_bugs)
@@ -1324,7 +965,7 @@ def list_old_bot_bugs():
                 bug_url = get_jira_issue_url(bug.key)
                 priority = bug.fields.priority.name if bug.fields.priority else "None"
                 # Try to get severity from common custom fields
-                severity = getattr(bug.fields, 'customfield_12316142', None)
+                severity = getattr(bug.fields, 'customfield_10840', None)
                 if severity and hasattr(severity, 'value'):
                     severity = severity.value
                 elif severity:
@@ -1383,7 +1024,7 @@ def list_recent_bug_comments():
                 bug_url = get_jira_issue_url(bug.key)
                 priority = bug.fields.priority.name if bug.fields.priority else "None"
                 # Try to get severity from common custom fields
-                severity = getattr(bug.fields, 'customfield_12316142', None)
+                severity = getattr(bug.fields, 'customfield_10840', None)
                 if severity and hasattr(severity, 'value'):
                     severity = severity.value
                 elif severity:
@@ -1415,8 +1056,6 @@ def main():
         list_old_bot_bugs()
         return
 
-    if params.get("process_github_issues"):
-        process_github_issues()
 
     if params.get("jira_bugs") or params.get("jira_escalations"):
         developers = init_developers_dict()
