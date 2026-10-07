@@ -1,0 +1,155 @@
+# Inherit settings from the organization-level .coderabbit.yaml configuration.
+inheritance: true
+
+# https://docs.coderabbit.ai/reference/configuration#reviews
+reviews:
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  poem: false
+  # https://docs.coderabbit.ai/configuration/path-instructions
+  # Keep these short — they're path-scoping + reviewer-tone hints. Architecture
+  # facts and gotchas live in AGENTS.md (loaded via knowledge_base above); link
+  # to a section there instead of repeating it here.
+  path_instructions:
+    - path: '**'
+      instructions: |
+        This is the OpenShift Network Tools repo — see AGENTS.md for
+        project overview, repository structure & architecture.
+        - Avoid nitpicks and avoid verbosity.
+
+  # https://docs.coderabbit.ai/configuration/path-instructions#path-filters
+  path_filters:
+    - "!vendor/**"
+  # https://docs.coderabbit.ai/reference/configuration#auto-review
+  auto_review:
+    drafts: false
+    ignore_title_keywords:
+      - WIP
+      - DNM
+    # To exclude labels, be sure to negate the label with '!'.
+    # Non-negated values turn this into an allowlist.
+    labels:
+      - '!work-in-progress'
+  # https://docs.coderabbit.ai/reference/configuration#slop-detection
+  slop_detection:
+    enabled: true
+    label: "coderabbit/ai-slop"
+  # https://docs.coderabbit.ai/guides/review-instructions#request-changes
+  # When true, CodeRabbit submits a "Request Changes" review on failing
+  # checks, which blocks the PR from merging until resolved or overridden.
+  request_changes_workflow: true
+  # https://docs.coderabbit.ai/pr-reviews/pre-merge-checks
+  # These are gating/process checks (pass-fail mechanics, thresholds) — kept
+  # here rather than in AGENTS.md, which is proactive guidance, not a gate.
+  pre_merge_checks:
+    # Built-in checks
+    title:
+      mode: "error"
+      requirements: >-
+        Use the imperative mood (e.g. "Add", "Fix", "Update"). Keep under 72
+        characters.
+    description:
+      mode: "error"
+    docstrings:
+      mode: "warning"
+      threshold: 80
+    issue_assessment:
+      mode: "error"
+    # Custom checks
+    custom_checks:
+      - name: "PR Quality"
+        mode: "error"
+        instructions: >-
+          Check the PR for overall quality in both description and size:
+
+          Description — must include the following sections:
+
+          1. "Why": A clear explanation of why this change is needed,
+          the motivation or problem being solved. Must go beyond
+          restating the title.
+
+          2. "What": A description of what the PR does, the approach
+          taken, and any key design decisions.
+
+          3. Size — the PR must be reasonably scoped. PRs over 7000
+          lines (additions + deletions, excluding vendor/) or
+          implementing an entire large feature end-to-end touching
+          many unrelated components must be split. Large PRs lead to
+          shallow reviews and increase the risk of bugs slipping
+          through.
+
+          Pass: The PR satisfies all applicable criteria above, or is
+          a trivial/non-functional change with a self-explanatory
+          title.
+
+          Fail: Any of the above criteria (1-3) are not met for
+          non-trivial changes.
+      - name: "Commit Message Quality"
+        mode: "error"
+        instructions: >-
+          Check commit messages and structure in this PR for quality:
+
+          1. Each commit must be a logical, self-contained unit of
+          change. Flag commits that bundle unrelated changes together.
+
+          2. Subject line should be concise and descriptive.
+
+          3. Subject should be prefixed with the affected component
+          when scoped (e.g. "ovn-kubernetes: Fix EgressIP race").
+
+          4. Body must be present and explain why the change is needed,
+          not just what was changed. The code diff already shows what.
+
+          5. Flag vague, uninformative, or generic messages like
+          "fix", "update", "wip", "changes", "misc", or "address
+          review comments" that provide no meaningful context. Review
+          feedback must be squashed into the relevant logical commit;
+          do not add a separate "address review comments" commit.
+
+          6. Flag overly verbose commit messages that read like
+          AI-generated changelogs — listing every function name,
+          variable, or line changed. Commit messages should explain
+          intent at a high level, not narrate the diff.
+
+          7. No merge commits (e.g. "Merge branch 'master' into ..."
+          or "Merge remote-tracking branch ..."). The author should
+          rebase onto the target branch instead.
+
+          Fail if any commit violates any of the above points.
+          Pass only if all commits satisfy all 7 criteria.
+      - name: "Unit Tests for Go Changes"
+        mode: "error"
+        instructions: >-
+          If Go source files (*.go) under pkg/ are added or
+          modified (excluding vendor/ and *_test.go files), check
+          whether corresponding *_test.go files are also added or
+          modified in this PR. Exclude documentation-only, CI, or
+          script changes.
+
+          Pass only if no production Go files or if test files are
+          included alongside the changes.
+      - name: "Stale Project Docs and Config"
+        mode: "error"
+        instructions: >-
+          Check whether changes in this PR make any of the following
+          project files stale or inaccurate:
+          - .coderabbit.yml (path instructions, pre-merge checks,
+            global review instructions)
+          - docs/**
+          - **/AGENTS.md
+
+          Examples of staleness:
+          1. A file or directory is renamed, moved, or deleted but is
+          still referenced by path in .coderabbit.yml or AGENTS.md.
+          2. A code entity (CRD, flag, binary, config key) is renamed
+          or removed but still referenced in docs or AGENTS.md.
+          3. Architecture or component boundaries change but
+          AGENTS.md is not updated.
+
+          Fail if any project docs or config become stale due to the
+          changes. If failing, advise the author: update the affected
+          docs files in this PR, or if the flagged staleness
+          is a false positive, explain why in a PR comment and use
+          "@coderabbitai ignore pre-merge checks" to override.
+
+          Pass only if the PR does not introduce any such staleness.
