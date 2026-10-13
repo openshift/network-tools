@@ -1,0 +1,175 @@
+#!/bin/bash
+set -euo pipefail
+source ./utils
+
+description() {
+  echo "Check if OVN containers are overloaded."
+}
+
+help () {
+  echo "This script checks if there are signs of OVN containers being overloaded.
+By default it works with a live cluster, but also can be used with must-gather.
+If there are potential problems, you will see WARNING messages in the output.
+
+Usage: $USAGE [-mg path_to_must-gather]
+
+Options:
+  -mg:
+    analyse must-gather instead of a live cluster
+
+Examples:
+  $USAGE
+  $USAGE -mg ~/Downloads/must-gather
+
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE
+"
+}
+
+CONSEC_MINUTES_LIMIT=10
+
+check_timestamps() {
+  timestamps=$1
+  if [ -z "$timestamps" ]; then
+    return 0
+  fi
+  consec_minutes=1
+  prev_timestamp=""
+  next_timestamp=""
+  last_overloaded_timestamp=""
+  while read full_timestamp; do
+    timestamp=$(echo ${full_timestamp:11:17})
+    if [ -n "$prev_timestamp" ]; then
+      next_hour=$(echo ${prev_timestamp:0:2} | sed 's/^0*//')
+      if [ -z "$next_hour" ]; then
+        next_hour=0
+      fi
+      prev_minute=$(echo ${prev_timestamp:3:5} | sed 's/^0*//')
+      next_minute=$((prev_minute + 1))
+      if [[ $next_minute == 60 ]]; then
+        next_minute=0
+        next_hour=$((next_hour + 1))
+      fi
+      if [[ $next_hour == 24 ]]; then
+        next_hour=0
+      fi
+      next_timestamp=$(printf "%02d:%02d" $next_hour $next_minute)
+      if [ $next_timestamp == $timestamp ]; then
+        consec_minutes=$((consec_minutes+1))
+        if (( "$consec_minutes" > $CONSEC_MINUTES_LIMIT )); then
+          last_overloaded_timestamp="$full_timestamp":XX
+        fi
+      else
+        consec_minutes=1
+      fi
+    fi
+    prev_timestamp=$timestamp
+  done <<< "$timestamps"
+  echo $last_overloaded_timestamp
+}
+
+check_counters_per_hour() {
+  counters=$1
+  if [ -z "$counters" ]; then
+    return 0
+  fi
+  last_overloaded_timestamp=""
+  while read full_counter; do
+    counter=$(echo $full_counter | cut -d ' ' -f1)
+    if (( "$counter" > 30 )); then
+      last_overloaded_timestamp=$(echo $full_counter | cut -d ' ' -f2):XX:XX
+    fi
+  done <<< "$counters"
+  echo $last_overloaded_timestamp
+}
+
+check_cluster_logs() {
+  container_name=$1
+  pod_name=$2
+  echo "INFO:   " checking pod = $pod_name, container = $container_name
+  timestamps=$(oc logs -c $container_name $pod_name -n openshift-ovn-kubernetes | grep "Unreasonably long" | cut -c 1-16 | uniq)
+  last_overload=$(check_timestamps "$timestamps")
+  if [ -n "$last_overload" ]; then
+      echo WARNING: ovn-controller from pod $pod_name is overloaded for more than $CONSEC_MINUTES_LIMIT minutes, latest timestamp = $last_overload
+  fi
+}
+
+check_mg_logs() {
+  file=$1
+  readable_name=$(echo $file | awk -F'pods' '{print $2}')
+  echo "INFO:   " checking file $readable_name
+  # cut the timestamp till minutes, only pass uniq timestamps, since we don't care how many times the warning was logged during a minute
+  timestamps=$(cat $file | grep "Unreasonably long" | cut -c 1-16 | uniq)
+  last_overload=$(check_timestamps "$timestamps")
+  if [ -n "$last_overload" ]; then
+    echo WARNING: file $readable_name is overloaded for more than $CONSEC_MINUTES_LIMIT minutes, latest timestamp = $last_overload
+    return 0
+  fi
+
+  # cut the timestamp till minutes, count only uniq timestamps, since we don't care how many times the warning was logged during a minute.
+  # cut out minutes, count how many minutes per hour warning logs were present. This results in "<N minutes per hour> <timestamp till hour>".
+  # last awk removes extra spaces.
+  counters=$(cat $file | grep "Unreasonably long" | cut -c 1-16 | uniq | cut -c 1-13 | uniq -c | awk '{$1=$1};1')
+  last_overload=$(check_counters_per_hour "$counters")
+  if [ -n "$last_overload" ]; then
+    echo WARNING: file $readable_name is overloaded for more than 30 minutes per hour, latest timestamp = $last_overload
+  fi
+}
+
+main() {
+  set +e
+  if [[ "${1-none}" == "-mg" ]]; then
+    mg=$(get_full_path "$2")
+    echo $mg
+    central_northd=true
+    OVNKUBE_MASTER_PODS=$(ls $mg/*/namespaces/openshift-ovn-kubernetes/pods | grep ovnkube-master)
+    if [ -z "$OVNKUBE_MASTER_PODS" ]; then
+      echo OVN-IC is enabled, check northd on every node
+      central_northd=false
+    fi
+
+    OVNKUBE_NODE_PODS=$(ls $mg/*/namespaces/openshift-ovn-kubernetes/pods | grep ovnkube-node)
+    echo "$OVNKUBE_NODE_PODS" | while read -r OVNKUBE_POD; do
+      check_mg_logs $mg/*/namespaces/openshift-ovn-kubernetes/pods/$OVNKUBE_POD/ovn-controller/ovn-controller/logs/current.log
+      if [ "$central_northd" = false ]; then
+        check_mg_logs $mg/*/namespaces/openshift-ovn-kubernetes/pods/$OVNKUBE_POD/northd/northd/logs/current.log
+      fi
+    done
+    if [ "$central_northd" = true ]; then
+      echo "$OVNKUBE_MASTER_PODS" | while read -r OVNKUBE_POD; do
+        check_mg_logs $mg/*/namespaces/openshift-ovn-kubernetes/pods/$OVNKUBE_POD/northd/northd/logs/current.log
+      done
+    fi
+  else
+    MODE=$(get_ovn_mode)
+    OVNKUBE_NODE_PODS=($(oc -n openshift-ovn-kubernetes get pods -l app=ovnkube-node -o=jsonpath='{.items[*].metadata.name}'))
+    for OVNKUBE_POD in "${OVNKUBE_NODE_PODS[@]}"; do
+      check_cluster_logs ovn-controller $OVNKUBE_POD
+      if [ $MODE == "ovn-ic" ]; then
+        # check northd logs on node pods
+        check_cluster_logs northd $OVNKUBE_POD
+      fi
+    done
+    if [ $MODE != "ovn-ic" ]; then
+      # check northd logs on master pods
+      OVNKUBE_MASTER_PODS=($(oc -n openshift-ovn-kubernetes get pods -l app=ovnkube-master -o=jsonpath='{.items[*].metadata.name}'))
+      for OVNKUBE_POD in "${OVNKUBE_MASTER_PODS[@]}"; do
+        check_cluster_logs northd $OVNKUBE_POD
+      done
+    fi
+
+    NODES=($(oc get nodes -o=jsonpath='{.items[*].metadata.name}'))
+    for NODE in "${NODES[@]}"; do
+      echo "INFO:   " checking node = $NODE ovs-vswitchd
+      warning_logs=$(oc adm node-logs $NODE -u ovs-vswitchd | grep "Spent an unreasonably long" -c; exit 0)
+      if (( "$warning_logs" > 0 )); then
+        echo WARNING! node $NODE has an overloaded vswitchd
+      fi
+    done
+  fi
+}
+
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

@@ -1,0 +1,70 @@
+# This Dockerfile builds the development image of network-tools repo.
+#
+# NOTE:
+#
+# This image is only for development environment, so please DO NOT DEPLOY
+# this image in any production environment.
+#
+FROM registry.ci.openshift.org/ocp/4.12:ovn-kubernetes AS ovnkube-trace
+
+FROM registry.ci.openshift.org/ocp/4.12:tools AS tools
+
+FROM fedora:latest
+COPY --from=ovnkube-trace /usr/bin/ovnkube-trace /usr/bin/
+COPY --from=tools /usr/bin/oc /usr/bin/oc
+
+# Make sure to maintain alphabetical ordering when adding new packages.
+# bash-completion to stress-ng is copied from registry.ci.openshift.org/ocp/4.11:tools Dockerfile
+# https://github.com/openshift/oc/blob/master/images/tools/Dockerfile
+RUN INSTALL_PKGS="\
+    bash-completion \
+    bc \
+    bcc \
+    bcc-tools \
+    bind-utils \
+    blktrace \
+    conntrack-tools \
+    crash \
+    e2fsprogs \
+    ethtool \
+    file \
+    fio \
+    git \
+    glibc-utils \
+    gzip \
+    hwloc \
+    iotop \
+    iproute \
+    iputils \
+    jq \
+    less \
+    ltrace \
+    mailx \
+    net-tools \
+    nginx \
+    nmap-ncat \
+    numactl \
+    parted \
+    pciutils \
+    perf \
+    procps-ng \
+    psmisc \
+    python3-bcc \
+    strace \
+    stress-ng \
+    sysstat \
+    tcpdump \
+    tmux \
+    traceroute \
+    util-linux \
+    vim-enhanced \
+    wget \
+    wireshark-cli \
+    xfsprogs \
+    " && \
+    yum -y install --setopt=tsflags=nodocs --setopt=skip_missing_names_on_install=False $INSTALL_PKGS && \
+    yum clean all && rm -rf /var/cache/*
+
+COPY debug-scripts/ /opt/bin/
+# remove internal scripts from the image and create a symlink for network-tools and gather entrypoint for must-gather
+RUN rm -rf /opt/bin/local-scripts && ln -s /opt/bin/network-tools /usr/bin/network-tools && ln -s /opt/bin/network-tools /usr/bin/gather

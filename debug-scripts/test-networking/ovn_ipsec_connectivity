@@ -1,0 +1,126 @@
+#!/bin/bash
+
+set -eo pipefail
+
+source ./test-networking/common
+source ./utils
+
+check_ovn_ipsec_enabled () {
+    echo "INFO: Ensuring ovn-ipsec is enabled"
+    IPSEC_PODS=($(oc -n openshift-ovn-kubernetes get pods -l app=ovn-ipsec -o=jsonpath='{.items[*].metadata.name}'))
+    #IPSEC_ENABLED=($(oc get network.operator.openshift.io/cluster -o=jsonpath='{.items[*].spec.defaultNetwork.ovnKubernetesConfig.ipsecConfig}'))
+
+    # TODO check with oc get network.operator.openshift.io/cluster -o=jsonpath='{.items[*].spec.defaultNetwork.ovnKubernetesConfig.ipsecConfig}'
+    # once tests can be run with real cluster
+    if [ -z "$IPSEC_PODS" ]; then #|| [ "$IPSEC_ENABLED" ]; then
+        echo "INFO: No ovn-ipsec pods exist, tunnel traffic will be unencrypted"
+        return 0
+    else
+        echo "INFO: ovn-ipsec is enabled, tunnel traffic should be encryted"
+        return 1
+    fi
+
+}
+
+do_ovn_ipsec_encryption_check () {
+    WORKER_NODES=($(get_worker_nodes_linux))
+    DATE=$(date +"%Y-%m-%d")
+    PCAP_FILENAME="ipsec-test-${DATE}.pcap"
+
+    if check_ovn_ipsec_enabled; then
+        exit 0
+    fi
+
+    client_debug_pod="client-debug"-$(get_random_name)
+    server_debug_pod="server-debug"-$(get_random_name)
+    sniffer_debug_pod=$(get_host_network_pod_name ${WORKER_NODES[1]})
+
+    create_pod_on_node $client_debug_pod "${WORKER_NODES[0]}"
+    create_pod_on_node $server_debug_pod "${WORKER_NODES[1]}"
+
+    global_namespace=$(oc get pod $client_debug_pod -o jsonpath={.metadata.namespace})
+
+    create_host_network_pod_on_node $sniffer_debug_pod "${WORKER_NODES[1]}" "$global_namespace"
+
+    server_debug_pod_ip=$(get_pod_ip "$global_namespace" "$server_debug_pod")
+
+    echo "INFO: Get Ethernet Interface Name"
+
+    interface=$(oc rsh -n "$global_namespace" ${sniffer_debug_pod} ls -l /sys/class/net/ | grep -v virtual | awk -F' ' '{print $9}')
+
+    interface=${interface//$'\n'/}
+    echo "INFO: Ethernet Interface name is: ${interface}"
+
+    tcpdump_expression="src $(oc get node "${WORKER_NODES[0]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}') \
+      and dst $(oc get node "${WORKER_NODES[1]}" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')"
+    tcpdump_command="tcpdump -i ${interface} -vv -c 2 -w ${PCAP_FILENAME} ${tcpdump_expression}"
+
+    echo "INFO: packet sniffing command is: ${tcpdump_command}"
+    #start sniffer in host networked pod, but only look for packets going over the tunnel from node1 -> node2
+    oc rsh -n "$global_namespace" ${sniffer_debug_pod} timeout 30s ${tcpdump_command} > /dev/null 2>&1 \
+    & PID=$!
+
+    echo "INFO: pinging server from client pod: oc rsh ${client_debug_pod} ping ${server_debug_pod_ip} -c 5 -W 2"
+
+    oc rsh -n "$global_namespace" ${client_debug_pod} ping "${server_debug_pod_ip}" -c 10 -W 2 > /dev/null 2>&1
+    
+    wait "${PID}"
+
+    oc cp -n "$global_namespace" --loglevel 1 ${sniffer_debug_pod}:/${PCAP_FILENAME} ./${logdir}/${PCAP_FILENAME} > /dev/null 2>&1 && PIDS+=($!)
+
+    if [ -f "./${logdir}/${PCAP_FILENAME}" ]; then
+        if tshark -r "./${logdir}/${PCAP_FILENAME}" -T fields -e frame.protocols | grep -q "esp"; then
+            echo " "
+            echo "INFO:Tunnel traffic is encrypted with ovn-ipsec!"
+            echo " "
+        else
+            echo " "
+            echo "INFO:Tunnel traffic is not encrypted, check pcap: "./${logdir}/${PCAP_FILENAME}" for further details"
+            echo " "
+        fi
+    else
+        echo "INFO:tcpdump error ${PCAP_FILENAME} wasn't written"
+    fi
+
+    ## cleanup resources
+    oc delete pod $server_debug_pod $client_debug_pod $sniffer_debug_pod
+}
+
+description() {
+  echo "Check that node2node traffic is encrypted when the ipsec feature is enabled"
+}
+
+help()
+{
+    echo
+    echo "This script checks that node2node traffic is encrypted when the ipsec feature
+is enabled an Openshift OVN cluster.
+By default this script spins up two pods (a client and a server) on two different nodes
+in the debug namespace.
+It also spins up a host networked debug pod which runs a packet sniffer on all traffic passing between the nodes.
+
+Method: We run a ping from the <src-pod> to <dst-pod>. The debug pod running tcpdump captures the packet
+as it transverses the Geneve tunnel across the nodes and ensures the pack is encrypted wth the ESP protocol.
+It will also dump the .pcap capture for further analysis to the debug pod regardless of a passing or failing test.
+
+Usage: $USAGE
+
+Examples:
+  $USAGE
+
+  oc adm must-gather $NETWORK_TOOLS_IMAGE -- $USAGE
+"
+}
+
+main () {
+    ensure_ns
+    #TODO A better way of ensuring we can contact the API Server, serivce accounts
+    logdir=$(prepare_logdir openshift-ovn-ipsec-connectivity)
+    do_ovn_ipsec_encryption_check |& tee $logdir/log
+}
+
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac

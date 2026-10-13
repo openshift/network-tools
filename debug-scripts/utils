@@ -1,0 +1,205 @@
+#!/bin/bash
+set -eo pipefail
+
+OVN_NAMESPACE="openshift-ovn-kubernetes"
+OVN_PLUGIN="OVNKubernetes"
+SDN_PLUGIN="OpenShiftSDN"
+NETWORK_TOOLS_IMAGE="--image-stream openshift/network-tools:latest"
+
+get_ovnk_leader_node () {
+  n=$(oc -n ${OVN_NAMESPACE} get lease ovn-kubernetes-master -o jsonpath='{.spec.holderIdentity}' 2> /dev/null)
+  if [ -z "$n" ]; then
+    oc get cm -n ${OVN_NAMESPACE} ovn-kubernetes-master -o jsonpath='{.metadata.annotations.control-plane\.alpha\.kubernetes\.io\/leader}' | \
+      grep -Po '"holderIdentity":.*?[^\\]"' | awk -F':' '{print $2}' | sed 's/"//g'
+  else
+    # in 4.14 and newer releases, the holderIdentidy is a pod, not the host. try extracting host from pod, if that is the case
+    pod_host=$(oc -n ${OVN_NAMESPACE} get pod $n -o jsonpath='{.spec.nodeName}' 2> /dev/null)
+    if [ -n "$pod_host" ]; then
+      echo "$pod_host"
+    else
+      echo "$n"
+    fi
+  fi
+}
+
+get_ovnk_leader_pod () {
+  leader_host=$(get_ovnk_leader_node)
+  [ -z "$leader_host" ] && { echo "not found"; exit 1; }
+  # label for leader pod in 4.14 and newer releases is ovnkube-control-plane
+  master_leader_pod="$(oc get pods -n $OVN_NAMESPACE --field-selector spec.nodeName=${leader_host} -l 'app in (ovnkube-master,ovnkube-control-plane)' -o=jsonpath='{.items..metadata.name}' \
+  || { echo "Can't get master leader pod on the node ${leader_host}" 1>&2; echo "not found"; exit 1; })"
+  echo "${master_leader_pod}"
+}
+
+get_network_plugin () {
+  oc get networks.config.openshift.io cluster -o 'jsonpath={.spec.networkType}'
+}
+
+get_ovn_mode () {
+  sample_node=$(oc get no -o jsonpath='{.items[0].metadata.name}')
+  sample_node_zone=$(oc get node "${sample_node}" -o jsonpath='{.metadata.annotations.k8s\.ovn\.org/zone-name}')
+  if [ "${sample_node}" = "${sample_node_zone}" ]; then
+    echo "ovn-ic"
+  else
+    echo "ovn-legacy"
+  fi
+}
+
+get_ovn_controller_container_name () {
+  OVN_CONTAINER="ovnkube-controller"
+  [ $(get_ovn_mode) == "ovn-ic" ] || OVN_CONTAINER="ovnkube-master"
+  echo ${OVN_CONTAINER}
+}
+
+function get_ovn_node_container_name {
+  OVN_CONTAINER="ovnkube-controller"
+  [ $(get_ovn_mode) == "ovn-ic" ] || OVN_CONTAINER="ovnkube-node"
+  echo ${OVN_CONTAINER}
+}
+
+get_ovndb_pods () {
+  NODE_PODS=$(oc -n ${OVN_NAMESPACE} get pods -l app=ovnkube-node -o=jsonpath='{.items[*].metadata.name}' || { echo "Can't get ovnkube-node pods" 1>&2; exit 1; })
+  echo ${NODE_PODS}
+}
+
+get_ovndb_leader_pod () {
+  LEADER="not found"
+  case $1 in
+    n) DB="n"; DB_NAME="OVN_Northbound" ;;
+    s) DB="s"; DB_NAME="OVN_Southbound" ;;
+    *) echo "Unrecognized ovn db type ${1}, choose one of n, s"; exit 1 ;;
+  esac
+  # in ovn-ic, there is no ovndb_leader
+  if [ $(get_ovn_mode) == "ovn-legacy" ]; then
+    MASTER_PODS=$(oc -n ${OVN_NAMESPACE} get pods -l app=ovnkube-master -o=jsonpath='{.items[*].metadata.name}' || { echo "Can't get ovnkube-master pods" 1>&2; exit 1; })
+    for MASTER_POD in ${MASTER_PODS}; do
+      RAFT_ROLE=$(oc exec -n ${OVN_NAMESPACE} "${MASTER_POD}" -c ${DB}bdb -- bash -c "ovn-appctl -t /var/run/ovn/ovn${DB}b_db.ctl cluster/status ${DB_NAME} 2>&1 | grep \"^Role\"")
+      if echo "${RAFT_ROLE}" | grep -q -i leader; then
+        LEADER=$MASTER_POD
+        break
+      fi
+    done
+  else
+    LEADER="not applicable in ovn-ic mode"
+  fi
+  echo "${LEADER}"
+}
+
+ensure_output_dir () {
+  pushd $NETWORK_TOOLS_INITIAL_DIR > /dev/null || exit 1
+  [ -n "$1" ] && dir="$1" && mkdir -p "$dir"
+  [ -z "$1" ] && dir=$PWD
+  cd $dir && pwd
+  popd > /dev/null || exit 1
+}
+
+get_pod_node () {
+    local namespace="${1}"
+    local name="${2}"
+    oc get pod -n "$namespace" "$name" -o jsonpath={.spec.nodeName}  || { echo "ERROR: Can't get pod node" 1>&2; exit 1; }
+}
+
+get_netns_pid () {
+  local namespace="${1}"
+  local pod="${2}"
+
+  node_name="$(get_pod_node "$namespace" "$pod")"
+  ns_pid=$(oc debug node/"$node_name" -- chroot /host bash -c \
+                 "crun state \$(crictl ps --pod \$(crictl pods --namespace $namespace --name $pod -q) -q) | jq .pid" || \
+                  { echo "ERROR: Can't get netns pid" 1>&2; exit 1; })
+  echo "$ns_pid"
+}
+
+ctrl_c () {
+  echo "Ctrl+C was detected"
+  exit 0
+}
+
+run_command_inside_pod_network_namespace_with_network_tools () {
+    SLEEP=""
+    if [[ "$1" == "--preserve-pod" || "$1" == "-pp" ]]; then
+       SLEEP="; echo DONE; sleep 300"
+       shift
+    fi
+    with_bash=""
+    left_braces=""
+    right_braces=""
+    if [[ "$1" == "--multiple-commands" || "$1" == "-mc" ]]; then
+      shift
+      left_braces="\""
+      right_braces="\""
+      with_bash="bash -c "
+    fi
+    if [[ "$1" == "--no-substitution" || "$1" == "-ns" ]]; then
+      shift
+      left_braces="'"
+      right_braces="'"
+      with_bash="bash -c "
+    fi
+    local namespace="${1}"
+    local pod="${2}"
+
+    local command="$left_braces${*:3}$right_braces"
+
+    node_name="$(get_pod_node "$namespace" "$pod")"
+    ns_pid="$(get_netns_pid "$namespace" "$pod")"
+    if [ -z "$ns_pid" ]; then
+      echo "ERROR: Failed to find netns pid"
+      exit 1
+    fi
+
+    trap ctrl_c SIGINT
+    if [ -z "$command" ]; then
+      echo "Running interactive shell for network-tools container.
+To run commands for pod netnamespace use
+
+nsenter -n -t $ns_pid <command>
+"
+      oc debug node/"$node_name" $NETWORK_TOOLS_IMAGE
+    else
+      echo
+      echo "INFO: Running $command in the netns of pod $pod"
+      FULL_COMMAND="nsenter -n -t $ns_pid $with_bash $command"
+      if [ -n "$SLEEP" ]; then
+        FULL_COMMAND="($FULL_COMMAND) $SLEEP"
+      fi
+      oc debug node/"$node_name" $NETWORK_TOOLS_IMAGE -- bash -c "$FULL_COMMAND"
+    fi
+}
+
+get_full_path () {
+  if [[ "$1" = /* ]]; then
+    echo "$1"
+  else
+    relative_path=$1
+    readlink -e "$NETWORK_TOOLS_INITIAL_DIR/$relative_path" || { echo "Provided path $relative_path doesn't exist" 1>&2; exit 1; }
+  fi
+}
+
+get_db_type () {
+  local FILE_PATH="${1}"
+
+  if ! command -v jq &> /dev/null; then
+    echo "ERROR: jq is not installed. Exiting." >&2
+    exit 1
+  fi
+
+  # Check if the file path is provided
+  if [ ! -e "$FILE_PATH" ]; then
+      echo "ERROR: Please provide a valid file path to OVN database." >&2
+      exit 1
+  fi
+
+  # Leverage grep to quickly find the needle in the haystack
+  grep --max-count=1 --silent '"OVN_Northbound"' "$FILE_PATH" && {
+    echo n
+    return
+  }
+
+  grep --max-count=1 --silent '"OVN_Southbound"' "$FILE_PATH" && {
+    echo s
+    return
+  }
+
+  echo unknown_db_type
+}

@@ -1,0 +1,315 @@
+
+#!/bin/bash
+set -euo pipefail
+source ./utils
+
+description() {
+    echo "Run multiple ovn-kubernetes containers with ovn dbs restored from files in a given directory"
+}
+
+# This script generates an file that provides helpful commands to execute commands in the
+# ovn db containers that are started. The following 2 globals specify the name of generated
+# file as well as the prefix used for all the functions and aliases in the file.
+ENV_FILE='/tmp/net_tools_env'
+ENV_CMD_PREFIX='ntool'
+
+help () {
+    echo "This script runs multiple OVN Kubernetes containers, restoring OVN databases from files in a
+specified directory. Containers will be running for each ovn db found.
+Ensure you invoke this script with the --clean option once you're finished, so containers are stopped.
+
+The script will wait up to 60 seconds for each OVN database to start. If any ovndb status is not active
+you will get a warning message.
+
+ATTENTION! For clustered dbs: dbs will be converted from cluster to standalone format
+as this is the only way to run dbs from gathered data. Db UUIDs will be preserved.
+
+ATTENTION! This is a local command, can't be used with must-gather.
+
+Usage: $USAGE [-c,--clean] db_directory [{n,s,all}] [{docker,podman}]
+  -c,--clean: stop any running net-tool containers and exit
+  db_directory: directory containing db files from must-gather
+  {n,s,all}: specify which ovn db is wanted: northbound, southbound or both. Default is n
+  {docker,podman}: choose container engine to use. Default is docker
+
+Examples:
+  $USAGE ./network_logs/dbs
+  $USAGE ./network_logs/dbs all podman
+  $USAGE -c
+
+Once containers are started, source the following generated file to interact with them:
+
+  source $ENV_FILE
+  ${ENV_CMD_PREFIX}_show  ; # use this to see all ovn db containers started
+  ${ENV_CMD_PREFIX}_help  ; # use this to see all the available commands
+
+  ${ENV_CMD_PREFIX}_0
+  ${ENV_CMD_PREFIX}_cmd_a bash -c \"ls cid*\"
+  ${ENV_CMD_PREFIX}_cmd_n ovn-nbctl show
+  ${ENV_CMD_PREFIX}_cmd_s bash -c \"hostname ; ovn-sbctl list chassis\"
+
+You also can invoke \"${ENV_CMD_PREFIX}_clean\" to stop the containers.
+"
+}
+
+declare -a DB_FILES
+declare -a DB_HOSTS
+declare -a DB_TYPES
+
+get_db_host() {
+    DB_TYPE="$1"
+    DB_FILE="$2"
+
+    TEMP_DB_FILE=$(mktemp -t ovn_dbs_locally_XXXXXX)
+    grep "${DB_TYPE}B_Global" ${DB_FILE} | grep '"name","' | tail -1 > ${TEMP_DB_FILE}
+
+    case "${DB_TYPE}" in
+       S) HOST=$(jq -r '.SB_Global[] | .options | .[1][] | select(.[0] == "name") | .[1]' ${TEMP_DB_FILE}) ;;
+       N) HOST=$(jq -r '.NB_Global[] | .options | .[1][] | select(.[0] == "name") | .[1]' ${TEMP_DB_FILE}) ;;
+       *) echo "ERROR: Invalid DB_TYPE: ${DB_TYPE}" >&2 ; exit 1 ;;
+    esac
+    if [ -z "$HOST" ]; then
+      echo "ERROR: Unable to determine hostname from OVN database ${DB_TYPE} ${DB_FILE}" >&2
+      exit 1
+    fi
+    rm -f ${TEMP_DB_FILE}
+    echo ${HOST}
+}
+
+start_ovn_db() {
+  CONTAINER_NAME="$1"
+  DB_FILE="$2"
+  DB_TYPE="$3"
+
+  if $CONTAINER_ENGINE ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    echo "Stopping and removing existing container ${CONTAINER_NAME}..." >&2
+    $CONTAINER_ENGINE stop "${CONTAINER_NAME}"
+  fi
+
+  CONTAINER=$($CONTAINER_ENGINE run -t -d --rm --name "${CONTAINER_NAME}" \
+  --entrypoint /bin/bash quay.io/openshift/origin-ovn-kubernetes:latest)
+
+  $CONTAINER_ENGINE exec $CONTAINER mkdir "/etc/ovn"
+  COPIED_DB="/etc/ovn/copied_db"
+  $CONTAINER_ENGINE cp "${DB_FILE}" $CONTAINER:$COPIED_DB >/dev/null
+  FINAL_DB="/etc/ovn/ovn${DB_TYPE}b_db.db"
+  $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "ovsdb-tool db-is-clustered ${COPIED_DB}" && {
+    echo "CLUSTERED DB, convert to standalone" >&2
+    $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "ovsdb-tool cluster-to-standalone ${FINAL_DB} ${COPIED_DB}"
+  } || {
+    $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "cp ${COPIED_DB} ${FINAL_DB}"
+  }
+  $CONTAINER_ENGINE exec $CONTAINER /usr/share/ovn/scripts/ovn-ctl run_${DB_TYPE}b_ovsdb &
+}
+
+check_ovn_db() {
+  CONTAINER_NAME="$1"
+  DB_TYPE="$2"
+
+  # wait for ovndb status to become running, max waiting time 10 sec
+  local i=1
+  until $CONTAINER_ENGINE exec $CONTAINER_NAME /bin/bash -c "ovn-${DB_TYPE}bctl show" > /dev/null 2>&1; do
+    sleep 1
+    ((i++)) && ((i==60)) && echo "\"ovn-${DB_TYPE}bctl show\" return non-zero code, check error messages" && return
+  done
+  $CONTAINER_ENGINE exec $CONTAINER_NAME /bin/bash -c "touch cid_${CONTAINER_NAME}"
+  echo ok
+}
+
+CONTAINER_NAME_PREFIX='net_tools_ovn'
+
+start_ovn_dbs() {
+  for ((i = 0; i < ${#DB_FILES[@]}; i++)); do
+     echo -n "Starting ${DB_FILES[${i}]##*/} ( ${DB_TYPES[${i}]} ${DB_HOSTS[${i}]} ) "
+     local CONTAINER_NAME="${CONTAINER_NAME_PREFIX}_${DB_TYPES[${i}]}b_${DB_HOSTS[${i}]}"
+     start_ovn_db ${CONTAINER_NAME} ${DB_FILES[${i}]} ${DB_TYPES[${i}]}
+     echo
+  done
+}
+
+check_ovn_dbs() {
+  for ((i = 0; i < ${#DB_FILES[@]}; i++)); do
+     echo -n "Checking for ${DB_FILES[${i}]##*/} ( ${DB_TYPES[${i}]} ${DB_HOSTS[${i}]} ) ... "
+    local CONTAINER_NAME="${CONTAINER_NAME_PREFIX}_${DB_TYPES[${i}]}b_${DB_HOSTS[${i}]}"
+    check_ovn_db ${CONTAINER_NAME} ${DB_TYPES[${i}]}
+  done
+}
+
+clean() {
+    CONTAINER_ENGINE="docker"
+    if ! command -v ${CONTAINER_ENGINE} &> /dev/null; then
+        CONTAINER_ENGINE="podman"
+    fi
+
+    local CIDS=$($CONTAINER_ENGINE ps -q --filter name="${CONTAINER_NAME_PREFIX}_*")
+    [ -z "${CIDS}" ] && return
+
+    echo "Stopping net-tool containers running dbs"
+    echo ${CIDS} | xargs $CONTAINER_ENGINE stop
+    sleep 1
+    echo "done" ; echo
+}
+
+generate_env_file() {
+    echo
+    echo "Generating env file to interact with the containers:"
+    echo "source ${ENV_FILE} ; ${ENV_CMD_PREFIX}_help"
+
+    cat << EOT > ${ENV_FILE}
+# This file was automatically generated: do not edit
+
+# main help
+${ENV_CMD_PREFIX}_help() {
+  echo ${ENV_CMD_PREFIX}_clean --------- Stops all containers
+  echo ${ENV_CMD_PREFIX}_show ---------- Show index for each ovn db container
+  echo ${ENV_CMD_PREFIX}_\<INDEX\> ------- Shell into a specific container. See ${ENV_CMD_PREFIX}_show
+  echo ${ENV_CMD_PREFIX}_cmd \<INDEX\> --- Execute command on db container
+  echo ${ENV_CMD_PREFIX}_cmd_a --------- Execute command on all db containers
+  echo ${ENV_CMD_PREFIX}_cmd_n --------- Execute command on all nb db containers
+  echo ${ENV_CMD_PREFIX}_cmd_s --------- Execute command on all sb db containers
+}
+
+# Stops all containers
+${ENV_CMD_PREFIX}_clean() {
+EOT
+    local CIDS=''
+    for ((i = 0; i < ${#DB_FILES[@]}; i++)); do
+        [ -n "${CIDS}" ] && CIDS="${CIDS} "
+        CIDS="${CIDS}${CONTAINER_NAME_PREFIX}_${DB_TYPES[${i}]}b_${DB_HOSTS[${i}]}"
+    done
+
+    cat << EOT >> ${ENV_FILE}
+  echo Stopping net-tool containers running dbs
+  echo ${CIDS} | xargs $CONTAINER_ENGINE stop
+}
+
+# Show index for each ovn db container
+${ENV_CMD_PREFIX}_show() {
+EOT
+    for ((i = 0; i < ${#DB_FILES[@]}; i++)); do
+        local CONTAINER_NAME="${CONTAINER_NAME_PREFIX}_${DB_TYPES[${i}]}b_${DB_HOSTS[${i}]}"
+        local LINE="echo Host: ${DB_HOSTS[${i}]} Index: ${i} Type: ${DB_TYPES[${i}]}b "
+        LINE="${LINE} Container_name: ${CONTAINER_NAME} Shell: ${ENV_CMD_PREFIX}_${i}"
+        echo "  ${LINE}" >> ${ENV_FILE}
+    done
+
+    cat << EOT >> ${ENV_FILE}
+}
+
+# Execute command on db container
+${ENV_CMD_PREFIX}_cmd() {
+  case \$1 in
+EOT
+    for ((i = 0; i < ${#DB_FILES[@]}; i++)); do
+      echo "    ${i}) " \
+      "CONTAINER=\"${CONTAINER_NAME_PREFIX}_${DB_TYPES[${i}]}b_${DB_HOSTS[${i}]}\" ;;" >> ${ENV_FILE}
+    done
+    cat << EOT >> ${ENV_FILE}
+    *) echo "Invalid index: \${1}. Will cowardly refuse the command"; return ;;
+  esac
+
+  echo "# Executing on \$CONTAINER"
+  shift
+  $CONTAINER_ENGINE exec \$CONTAINER \$@
+  echo
+}
+
+# Execute command on all db containers
+${ENV_CMD_PREFIX}_cmd_a() {
+  for ((i = 0; i < ${#DB_FILES[@]}; i++)); do
+    ${ENV_CMD_PREFIX}_cmd \$i \$@
+  done
+}
+
+# Execute command on all nb db containers
+${ENV_CMD_PREFIX}_cmd_n() {
+EOT
+    for ((i = 0; i < ${#DB_FILES[@]}; i++)); do
+      [ ${DB_TYPES[${i}]} = "n" ] && \
+      echo "  ${ENV_CMD_PREFIX}_cmd $i \$@" >> ${ENV_FILE}
+    done
+    echo "  return" >> ${ENV_FILE}
+    cat << EOT >> ${ENV_FILE}
+}
+
+# Execute command on all sb db containers
+${ENV_CMD_PREFIX}_cmd_s() {
+EOT
+    for ((i = 0; i < ${#DB_FILES[@]}; i++)); do
+      [ ${DB_TYPES[${i}]} = "s" ] && \
+      echo "  ${ENV_CMD_PREFIX}_cmd $i \$@" >> ${ENV_FILE}
+    done
+    echo "  return" >> ${ENV_FILE}
+    cat << EOT >> ${ENV_FILE}
+}
+
+# Aliases for bash based on db type and hostname and index
+EOT
+    for ((i = 0; i < ${#DB_FILES[@]}; i++)); do
+        local CONTAINER_NAME="${CONTAINER_NAME_PREFIX}_${DB_TYPES[${i}]}b_${DB_HOSTS[${i}]}"
+        local ALIAS_INDEX="${ENV_CMD_PREFIX}_${i}"
+        echo "alias ${ALIAS_INDEX}=\"$CONTAINER_ENGINE exec -it ${CONTAINER_NAME} /bin/bash\"" >> ${ENV_FILE}
+    done
+    for ((i = 0; i < ${#DB_FILES[@]}; i++)); do
+        local CONTAINER_NAME="${CONTAINER_NAME_PREFIX}_${DB_TYPES[${i}]}b_${DB_HOSTS[${i}]}"
+        local ALIAS_HOSTNAME="${ENV_CMD_PREFIX}_ovn_${DB_TYPES[${i}]}b_${DB_HOSTS[${i}]}"
+        echo "alias ${ALIAS_HOSTNAME}=\"$CONTAINER_ENGINE exec -it ${CONTAINER_NAME} /bin/bash\"" >> ${ENV_FILE}
+    done
+    echo >> ${ENV_FILE}
+}
+
+main() {
+  # $1 - db dir
+  # $2 - container engine (docker or podman)
+
+  DB_DIR=$(get_full_path "$1")
+
+  # Backwards compatibility: param 2 used to be the db type.
+  # If that was provided, keep calm and carry on. :)
+  CONTAINER_ENGINE="${2:-docker}"
+  case ${CONTAINER_ENGINE} in
+    n) DB_TYPE="n" ; CONTAINER_ENGINE="${3:-docker}" ;;
+    s) DB_TYPE="s" ; CONTAINER_ENGINE="${3:-docker}" ;;
+    all) DB_TYPE="all" ; CONTAINER_ENGINE="${3:-docker}" ;;
+    *) DB_TYPE="n" ; CONTAINER_ENGINE="${3:-docker}" ;;
+  esac
+
+  if [ -z "$DB_TYPE" ]; then
+      echo "ERROR: Unable to determine OVN database type." >&2
+      exit 1
+  fi
+
+  if ! command -v jq &> /dev/null; then
+    echo "ERROR: jq is not installed. Exiting." >&2
+    exit 1
+  fi
+
+  for DB_FILE in "${DB_DIR}"/*; do
+     CURR_DB_FILE_TYPE=$(get_db_type "${DB_FILE}")
+
+     [ "${DB_TYPE}" != "all" ] && [ "${DB_TYPE}" != "${CURR_DB_FILE_TYPE}" ] && continue
+
+     case "${CURR_DB_FILE_TYPE}" in
+       n) DB_FILES+=("${DB_FILE}") ; DB_HOSTS+=( $(get_db_host N ${DB_FILE}) ) ; DB_TYPES+=("n") ;;
+       s) DB_FILES+=("${DB_FILE}") ; DB_HOSTS+=( $(get_db_host S ${DB_FILE}) ) ; DB_TYPES+=("s") ;;
+       *) echo "Unable to determine OVN database type: Ignoring ${DB_FILE}" >&2 ;;
+     esac
+  done
+
+  clean
+
+  [ -z "${DB_FILES:-}" ] && {
+    echo "Error: No OVN database files found in the specified directory." >&2 ; exit 1;
+  }
+
+  start_ovn_dbs
+  check_ovn_dbs
+  generate_env_file
+}
+
+case "${1:-}" in
+  description) description ;;
+  ''|-h|--help) help ;;
+  -s|--stopall|-c|--clean) clean ;;
+  *) main "$@" ;;
+esac

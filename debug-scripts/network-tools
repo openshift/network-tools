@@ -1,0 +1,91 @@
+#!/bin/bash
+set -eo pipefail
+
+# Kill Script Function
+trap exit TERM
+shopt -s expand_aliases
+alias exit_script='kill -s TERM $$'
+
+function exit_with_help() { echo -e "${1}" && exit_script; }
+
+export NETWORK_TOOLS_INITIAL_DIR=$PWD
+scriptDir=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+cd "$scriptDir"
+
+source ./utils
+
+declare -A COMMANDS
+
+function add_commands() {
+  local -n command_table=$1
+  msg=$2
+  sorted=()
+  while IFS= read -rd '' key; do
+      sorted+=( "$key" )
+  done < <(printf '%s\0' "${!command_table[@]}" | sort -z)
+  for key in "${sorted[@]}"; do
+    local fn_name=${command_table[$key]}
+    description="$($fn_name "description")"
+    msg+="\t$key: $description\n"
+  done
+  for i in "${!command_table[@]}"; do
+    COMMANDS[$i]=${command_table[$i]}
+  done
+}
+
+function main() {
+
+    declare -A -x network_test=(
+        ["network-test"]="./test-networking/main"
+        ["ovn-ipsec-connectivity"]="./test-networking/ovn_ipsec_connectivity"
+        ["ovn-nic-firmware"]="./test-networking/ovn_nic_firmware"
+        ["ovn-pod-to-pod"]="./test-networking/ovn_pod_to_pod_connectivity"
+        ["ovn-pod-to-svc"]="./test-networking/ovn_pod_to_svc_connectivity"
+        ["sdn-cluster-info"]="./test-networking/sdn_cluster_and_node_info"
+        ["sdn-node-connectivity"]="./test-networking/sdn_node_connectivity"
+        ["sdn-pod-to-pod"]="./test-networking/sdn_pod_to_pod_connectivity"
+        ["sdn-pod-to-svc"]="./test-networking/sdn_pod_to_svc_connectivity"
+    )
+
+    # add [command_name]=[script path] here to make a new script a part of network-tools
+    declare -A -x other_commands=(
+        ["ovn-metrics-list"]="./scripts/ovn-metrics-list"
+        ["ovn-get"]="./scripts/ovn-get"
+        ["ovn-count-flows"]="./scripts/ovn-count-flows"
+        ["ovn-perf-scanner"]="./scripts/ovn-perf-scanner"
+        ["ovn-db-run-command"]="./scripts/ovn-db-run-command"
+        ["pod-run-netns-command"]="./scripts/pod-run-netns-command"
+    )
+
+    msg="Usage: network-tools [command]
+"
+    msg+="
+Available commands
+"
+    add_commands other_commands "$msg"
+
+     msg+="
+Network-test commands
+"
+    add_commands network_test "$msg"
+
+    if [[ -f "./local-scripts/local-scripts-map" ]]; then
+        source ./local-scripts/local-scripts-map
+        msg+="
+Local commands
+"
+        add_commands INTERNAL_COMMANDS "$msg"
+    fi
+
+    if [[ $# -lt 1 ]]; then exit_with_help "$msg"; fi
+    if [ "$1" == "-h" ]; then exit_with_help "$msg"; fi
+
+    local command=${1}; shift
+    local fn_name=${COMMANDS[$command]}
+
+    if [[ $fn_name == '' ]]; then exit_with_help "$msg"; fi
+    export USAGE="network-tools ${command}"
+    if $fn_name "$@"; then return 0; else echo "ERROR: Command returned non-zero exit code, check output or logs."; return 1; fi
+}
+
+main "$@"

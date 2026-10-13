@@ -1,0 +1,89 @@
+#!/bin/bash
+set -euo pipefail
+source ./utils
+
+description() {
+    echo "Run ovn-kubernetes container with ovn db restored from a given file"
+}
+
+help () {
+    echo "Run ovn-kubernetes container with ovn db restored from a given file.
+You will get interactive pseudo-TTY /bin/bash running in created container,
+after you end bash session (use Ctrl+D) container will be removed.
+
+The script will wait max 10 seconds for ovn db to start,
+if ovndb status is not active you will get warning message.
+
+ATTENTION! For clustered dbs: db will be converted from cluster to standalone format
+as this is the only way to run db from gathered data. Db UUIDs will be preserved.
+
+ATTENTION! This is local command, can't be used with must-gather.
+
+Usage: $USAGE raw_db_file [{docker,podman}]
+  raw_db_file: db file from must-gather
+  {docker,podman}: choose container engine to use. Default is docker
+
+Examples:
+  $USAGE ./must-gather.local.847012/quay-io-npinaeva-must-gather-sha256-48826/network_logs/leader_nbdb
+  $USAGE ./leader_sbdb podman
+"
+}
+
+clean_up () {
+  echo "CLEANUP"
+  $CONTAINER_ENGINE stop $CONTAINER
+  $CONTAINER_ENGINE rm $CONTAINER
+  exit 0
+}
+
+main() {
+  # $1 - db file
+  # $2 - container engine (docker or podman)
+
+  DB_FILE=$(get_full_path "$1")
+
+  # Backwards compatibility: param 2 used to be the db type.
+  # If that was provided, keep calm and carry on. :)
+  CONTAINER_ENGINE="${2:-docker}"
+  case ${CONTAINER_ENGINE} in
+    n) DB_TYPE="n" ; CONTAINER_ENGINE="${3:-docker}" ;;
+    s) DB_TYPE="s" ; CONTAINER_ENGINE="${3:-docker}" ;;
+    *) DB_TYPE=$(get_db_type "$DB_FILE") ;;
+  esac
+
+  if [ -z "$DB_TYPE" ]; then
+      echo "ERROR: Unable to determine OVN database type." >&2
+      exit 1
+  fi
+
+  CONTAINER=$($CONTAINER_ENGINE run -t -d --entrypoint /bin/bash quay.io/openshift/origin-ovn-kubernetes:latest)
+  # cleanup if container is successfully created
+  trap clean_up EXIT
+
+  $CONTAINER_ENGINE exec $CONTAINER mkdir "/etc/ovn"
+  COPIED_DB="/etc/ovn/copied_db"
+  $CONTAINER_ENGINE cp "${DB_FILE}" $CONTAINER:$COPIED_DB
+  FINAL_DB="/etc/ovn/ovn${DB_TYPE}b_db.db"
+  $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "ovsdb-tool db-is-clustered ${COPIED_DB}" && {
+    echo "CLUSTERED DB, convert to standalone"
+    $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "ovsdb-tool cluster-to-standalone ${FINAL_DB} ${COPIED_DB}"
+  } || {
+    echo "NOT CLUSTERED DB"
+    $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "cp ${COPIED_DB} ${FINAL_DB}"
+  }
+  $CONTAINER_ENGINE exec $CONTAINER /usr/share/ovn/scripts/ovn-ctl run_${DB_TYPE}b_ovsdb &
+  # wait for ovndb status to become running, max waiting time 10 sec
+
+  i=1
+  until $CONTAINER_ENGINE exec $CONTAINER /bin/bash -c "ovn-${DB_TYPE}bctl show" > /dev/null 2>&1; do
+    sleep 1
+    ((i++)) && ((i==10)) && echo "\"ovn-${DB_TYPE}bctl show\" return non-zero code, check error messages" && break
+  done
+  $CONTAINER_ENGINE exec -it $CONTAINER /bin/bash
+}
+
+case "${1:-}" in
+  description) description ;;
+  -h|--help) help ;;
+  *) main "$@" ;;
+esac
