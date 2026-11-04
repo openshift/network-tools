@@ -19,7 +19,6 @@ RUN INSTALL_PKGS="\
     conntrack-tools \
     iperf3 \
     iproute \
-    nginx \
     numactl \
     traceroute \
     wireshark-cli \

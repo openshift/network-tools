@@ -60,7 +60,6 @@ To run script that are not included in the `network-tools -h` call them directly
 * bcc
 * bcc-tools
 * python3-bcc
-* nginx
 * numactl
 * traceroute
 * wireshark-cli

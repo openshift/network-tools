@@ -16,7 +16,7 @@ create_pod_on_node () {
 
     oc run "$POD_NAME" --image=quay.io/openshift/origin-network-tools:latest \
         --overrides='{ "spec": { "nodeSelector": {"'"$POD_NAME"'": "network-tools-debug-role"}, "tolerations": [{"key": "node-role.kubernetes.io/master", "effect": "NoSchedule", "operator": "Exists"}] }}' \
-        -- /sbin/init
+        -- python3 -m http.server 80
 
     # wait till pod is running
     oc wait --for=condition=Ready pod/"$POD_NAME" --timeout=3m
@@ -31,8 +31,7 @@ create_svc () {
     # create the backing pod
     create_pod_on_node "$SVC_NAME" "$NODE_NAME"
     echo "INFO: Creating a ClusterIP service: "$SVC_NAME""
-    # start webserver and expose the port
-    oc rsh "$SVC_NAME" systemctl start nginx
+
     # TODO: Allow users to specify which svc type they want to test
     oc expose pod/"$SVC_NAME" --port=80
     # wait till svc endpoint is created
